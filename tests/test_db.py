@@ -5,12 +5,13 @@ from tests.conftest import NOW, make_job
 
 
 def test_migrations_applied_once(conn):
-    assert repo.schema_version(conn) == 1
+    latest = len(list(repo.MIGRATIONS_DIR.glob("*.sql")))
+    assert repo.schema_version(conn) == latest
     repo.migrate(conn)  # idempotent
-    assert repo.schema_version(conn) == 1
+    assert repo.schema_version(conn) == latest
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"jobs", "evaluations", "applications", "network", "companies_contacted",
-            "runs", "labels", "people"} <= tables
+            "runs", "labels", "people", "dry_run_drafts", "sheet_queue", "status_history"} <= tables
 
 
 def _app(conn, status="drafting", outreach_type="direct_email"):
@@ -57,3 +58,10 @@ def test_sent_marks_company_contacted(conn):
     assert not repo.is_company_contacted(conn, "acme", None)
     repo.transition_application(conn, app_id, "sent", NOW)
     assert repo.is_company_contacted(conn, "acme", None)
+
+
+def test_status_changes_are_recorded(conn):
+    app_id = _app(conn, "drafted")
+    repo.transition_application(conn, app_id, "sent", NOW, source="gmail")
+    rows = conn.execute("SELECT kind, old_status, new_status, source FROM status_history").fetchall()
+    assert [tuple(r) for r in rows][-1] == ("application", "drafted", "sent", "gmail")

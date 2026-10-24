@@ -227,3 +227,38 @@ eligibility:
   sponsorship:
     - '\b(visa )?sponsorship\b'
     - '\bsponsor (your |a )?visa\b'
+
+# ---------------------------------------------------------------- Phase 2
+
+# Claude call #2 (spec section 11): drafts and kits for the shortlist only.
+drafting:
+  model: sonnet
+  effort: medium
+  timeout_seconds: 600
+  retries: 2
+  description_chars: 2400
+  default_questions:
+    - Why do you want to work here?
+    - Tell us about a project you're proud of.
+
+outreach:
+  # Safety switch. false = drafts/kits go to reports/dry-run/ only, even without --dry-run.
+  # Flip to true after calibration (Phase 1 exit criteria) and your approval.
+  live_enabled: false
+  attachment_filename: Resume.pdf
+  pending_kit_days: 7          # portal rows still pending after this -> expired
+  complete_feeds: [wwr]        # feeds that list every active job (disappearing = closed)
+  # Applicant-tracking confirmation subjects (spec section 11, sync step 5)
+  ats_confirmation:
+    - '\bthank(s| you) for (applying|your application)\b'
+    - '\b(we(''ve| have) )?received your application\b'
+    - '\byour application (to|for|at)\b'
+    - '\bapplication (received|submitted|confirmation)\b'
+
+notifications:
+  ntfy_server: https://ntfy.sh
+  timeout_seconds: 10
+
+schedule:
+  max_attempts_per_day: 3
+  stale_lock_minutes: 60

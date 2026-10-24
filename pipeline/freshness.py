@@ -2,6 +2,7 @@
 
 Fallback order when the source has no date: relative text -> ATS API date -> newest-first
 feed evidence (after a baseline run). Otherwise `age_unknown`."""
+import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -78,3 +79,86 @@ def is_closed_text(text: str, patterns: list[str]) -> bool:
         if re.search(p, text or "", re.I | re.M):
             return True
     return False
+
+
+# ---------------------------------------------------------------- check #2: liveness (before drafting)
+
+CLOSED_PAGE = re.compile(
+    r"no longer (accepting|available|open)|positions? (has been |is )?filled|"
+    r"job (is )?(no longer|not) available|this (job|position|posting|role) (has )?(expired|closed|been closed)|"
+    r"job not found|posting (is )?closed|position (is )?closed", re.I)
+HOME_PATHS = {"", "/", "/careers", "/jobs", "/join", "/careers/", "/jobs/", "/about/careers", "/company/careers"}
+HN_ITEM = "https://hn.algolia.com/api/v1/items/{id}"
+
+
+def _hn_status(item: dict, closed_patterns) -> str | None:
+    if not item.get("text"):
+        return "hn_deleted"
+    from fetchers.detail_fetch import html_to_text
+    replies = " ".join(html_to_text(c.get("text") or "")[0] for c in item.get("children", [])
+                       if c.get("author") == item.get("author"))
+    if is_closed_text(f"{html_to_text(item['text'])[0]}\n{replies}", closed_patterns):
+        return "hn_filled"
+    return None
+
+
+def _ats_missing(http, apply_url: str | None) -> bool | None:
+    """True if the posting is gone from its public ATS board, None if not on an ATS."""
+    from pipeline.normalize import ats_board
+    board = ats_board(apply_url)
+    if not board:
+        return None
+    provider, slug, job_id = board
+    if provider == "greenhouse":
+        status, _, _ = http.fetch_status(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{job_id}")
+        return status == 404
+    if provider == "lever":
+        status, _, _ = http.fetch_status(f"https://api.lever.co/v0/postings/{slug}/{job_id}")
+        return status == 404
+    status, _, text = http.fetch_status(f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
+    if status == 404:
+        return True
+    return job_id not in {j.get("id") for j in json.loads(text or "{}").get("jobs", [])}
+
+
+def check_liveness(job, http, closed_patterns: list[str], *, now: datetime, fetched_sources: set[str],
+                   complete_feeds: set[str]) -> tuple[str, str]:
+    """('open' | 'closed' | 'unknown', why). Unknown jobs are not drafted this run."""
+    from urllib.parse import urlsplit
+    sources = json.loads(job["sources"] or "[]")
+    names = {s["source"] for s in sources}
+    try:
+        # Gone from a feed that lists every active job, after being seen there before.
+        if names and names <= complete_feeds and names <= fetched_sources:
+            last_seen = datetime.fromisoformat(job["last_seen_at"].replace("Z", "+00:00"))
+            if last_seen < now.replace(microsecond=0):   # stored timestamps are whole seconds
+                return "closed", "gone_from_feed"
+        for s in sources:
+            if s["source"] == "hn":
+                status, _, text = http.fetch_status(HN_ITEM.format(id=s["external_id"]))
+                if status == 404:
+                    return "closed", "hn_deleted"
+                why = _hn_status(json.loads(text or "{}"), closed_patterns)
+                if why:
+                    return "closed", why
+        missing = _ats_missing(http, job["apply_url"])
+        if missing:
+            return "closed", "ats_missing"
+        url = job["apply_url"] or next((s["url"] for s in sources if s["source"] != "hn"), None)
+        if not url:
+            return "open", "hn_only"
+        if "linkedin.com" in (urlsplit(url).hostname or ""):
+            return "unknown", "unverifiable_host"
+        status, final, text = http.fetch_status(url)
+    except (OSError, ValueError) as e:   # requests errors subclass OSError
+        return "unknown", f"error: {type(e).__name__}"
+    if status in (404, 410):
+        return "closed", f"http_{status}"
+    if status >= 400:
+        return "unknown", f"http_{status}"
+    orig_path, final_path = urlsplit(url).path.rstrip("/"), urlsplit(final).path.rstrip("/")
+    if final_path != orig_path and final_path in HOME_PATHS and orig_path not in HOME_PATHS:
+        return "closed", "redirected_home"
+    if CLOSED_PAGE.search(text or ""):
+        return "closed", "closed_text"
+    return "open", "ok"

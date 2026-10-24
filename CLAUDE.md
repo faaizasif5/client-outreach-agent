@@ -7,12 +7,13 @@ contains a real profile). Never commit `.env`, `credentials.json`, tokens, `data
 `applications/`, `logs/`, `reports/`.
 
 ## Current phase
-**Phase 1: Discovery + Matching** (spec section 20). In scope: HN + RemoteOK + WWR fetchers,
-normalize + layered dedupe, company suppression logic, freshness check #1, eligibility gate,
-contact extraction + routing, Claude CLI wrapper, scoring + Pydantic, local markdown report,
-`python main.py label` calibration. Out of scope until approved: Gmail, Sheets, ntfy, YC
-scraper/Playwright, LinkedIn/Network tab, drafting, tailored resumes. Do not install their
-dependencies.
+**Phase 1 calibration + Phase 2 built in dry-run** (approved deviation from spec section 20's
+order: Phase 2 code before Phase 1 exit criteria, but nothing reaches Google until calibration
+is done). `outreach.live_enabled: false` in `config.yaml` keeps every run in dry-run: drafts and
+kits go to `reports/dry-run/<date>/` and the `dry_run_drafts` table, never `applications`, so dry
+runs never block a company. Flip it only with the user's explicit approval.
+Phase 3: YC scraper waits for the user to check YC's terms; Network tab, tailored resumes,
+weekly stats, stale-draft cleanup not built yet. Ask before installing Playwright or Tectonic.
 
 ## Hard rules (spec section 2)
 - Based in Karachi: nothing proceeds unless the deterministic eligibility gate allows it.
@@ -50,7 +51,10 @@ py -3 -m venv .venv
 .venv\Scripts\python -m pytest            # unit + integration tests (fixtures only, no network)
 .venv\Scripts\python main.py --dry-run    # live sources -> reports/<date>.md
 .venv\Scripts\python main.py label        # read labels from reports/*.md, print calibration
+.venv\Scripts\python main.py setup-google # one-time OAuth, creates tracker sheet, uploads resumes
+.venv\Scripts\python main.py              # live (only when outreach.live_enabled: true)
 ```
+Runs are guarded once per Karachi day (`--force` to rerun). Scheduler: `scripts/install_task.ps1`.
 Copy `candidate/profile.example.yaml` to `candidate/profile.yaml` and fill it truthfully.
 Resume PDFs go in `candidate/resumes/` (a key with no PDF falls back to `fullstack`).
 

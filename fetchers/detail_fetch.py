@@ -66,6 +66,15 @@ class Http:
                         encoding="utf-8")
         return json.loads(body) if as_json else body
 
+    def fetch_status(self, url: str) -> tuple[int, str, str]:
+        """Uncached GET that never raises on HTTP errors: (status, final_url, text).
+        Used by the liveness check, which needs 404s and redirects, not exceptions."""
+        host = self._check_host(url)
+        self._wait(host)
+        resp = self.session.get(url, timeout=self.cfg["timeout_seconds"], allow_redirects=True)
+        self.requests_made += 1
+        return resp.status_code, getattr(resp, "url", url) or url, resp.text or ""
+
     def ats_posted_date(self, url: str | None) -> datetime | None:
         """Posting date from Greenhouse / Lever / Ashby public APIs, when the URL is on one."""
         board = ats_board(url)

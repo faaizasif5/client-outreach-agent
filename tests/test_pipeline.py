@@ -7,7 +7,7 @@ import pytest
 
 import main
 from fetchers import hn_whos_hiring, remoteok, wwr
-from schemas.ai_output import ScoreBatch
+from schemas.ai_output import DraftBatch, ScoreBatch
 from tests.conftest import FIXTURES, NOW
 
 
@@ -19,24 +19,48 @@ def fixture_fetchers():
             "remoteok": lambda: remoteok.parse(ro), "wwr": lambda: wwr.parse(rss)}
 
 
+EMAIL_BODY = ("Hi,\nI cut API latency by 30% with Redis caching on a client project.\n"
+              "I work as a B2B contractor with 4 hours of US overlap.\nOpen to a short call?\nAlex Example")
+STRETCH_BODY = ("Hi,\nI cut API latency by 30% with Redis caching on a client project.\n"
+                "I know the role asks for US-based candidates; I'm based in Pakistan.\n"
+                "I work as a B2B contractor, so no payroll setup, with US-hours overlap.\n"
+                "Would a short call make sense?\nAlex Example")
+
+
 class FakeClaude:
-    """Scores every job_key found in the prompt; never touches the real CLI."""
+    """Answers scoring and drafting calls for every job_key in the prompt; never the real CLI."""
     def __init__(self, fit=85):
         self.calls, self.prompts, self.fit = 0, [], fit
+        self.draft_calls, self.draft_prompts = 0, []
 
     def __call__(self, prompt, model, schema, retries, timeout, **kw):
-        self.calls += 1
         self.kwargs = kw
+        usage = {"model": model, "effort": kw.get("effort"), "attempts": 1,
+                 "calls": [{"usage": {"input_tokens": len(prompt) // 4, "output_tokens": 500}, "duration_ms": 1000}]}
+        if schema is DraftBatch:
+            self.draft_calls += 1
+            self.draft_prompts.append(prompt)
+            results = []
+            for block in re.findall(r'<listing job_key="[^"]+">.*?</listing>', prompt, re.S):
+                key = re.search(r'job_key="([^"]+)"', block).group(1)
+                otype = re.search(r"outreach_type: (\w+)", block).group(1)
+                bucket = re.search(r"bucket: (\w+)", block).group(1)
+                if otype == "direct_email":
+                    results.append({"job_key": key, "outreach_type": otype, "subject": "Backend role",
+                                    "body": EMAIL_BODY if bucket == "eligible" else STRETCH_BODY})
+                else:
+                    results.append({"job_key": key, "outreach_type": otype, "subject": None, "body": "",
+                                    "kit": {"cover_note": "I build Django APIs.", "form_answers": [
+                                        {"question": "Why us?", "answer": "The product fits my Django work."}]}})
+            return schema.model_validate({"results": results}), usage
+        self.calls += 1
         self.prompts.append(prompt)
         keys = re.findall(r'<listing job_key="([^"]+)">', prompt)
         results = [{"job_key": k, "resume": "fde" if "Forward" in prompt.split(k)[1][:200] else "fullstack",
                     "fit_score": self.fit, "evidence": ["Listing: 'Django'", "Profile: Django in production"],
                     "reason": "Backend-heavy role", "confidence": "high", "skip": False,
                     "skip_reasons": []} for k in keys]
-        return schema.model_validate({"results": results}), {
-            "model": model, "attempts": 1,
-            "calls": [{"usage": {"input_tokens": len(prompt) // 4, "output_tokens": 500},
-                       "duration_ms": 1000}]}
+        return schema.model_validate({"results": results}), usage
 
 
 @pytest.fixture

@@ -67,6 +67,58 @@ def _scored_table(items, existing_labels) -> list[str]:
     return lines
 
 
+def usage_lines(usage) -> list[str]:
+    """One line per Claude call: model, effort, tokens, time (full envelopes are in runs.usage)."""
+    if not usage:
+        return []
+    stages = usage if "scoring" in usage else {"scoring": usage}
+    lines = []
+    for stage, u in stages.items():
+        if not u:
+            continue
+        for call in u.get("calls", []):
+            t = call.get("usage") or {}
+            thinking = (t.get("output_tokens_details") or {}).get("thinking_tokens", 0)
+            lines.append(f"- Claude {stage}: {u.get('model')} effort={u.get('effort')} "
+                         f"input={t.get('input_tokens', 0) + t.get('cache_creation_input_tokens', 0) + t.get('cache_read_input_tokens', 0)} "
+                         f"output={t.get('output_tokens')} (thinking {thinking}) time={call.get('duration_ms')}ms "
+                         f"attempts={u.get('attempts')}")
+    return lines
+
+
+def outreach_section(stage: dict | None, live: bool) -> list[str]:
+    if stage is None:
+        return []
+    where = "Gmail drafts / tracker sheet" if live else "dry run: files in reports/dry-run/, nothing sent to Google"
+    out = [f"## Drafts and kits ({where})", ""]
+    for c in stage.get("created", []):
+        i = c["item"]
+        kind = "email" if i["route"] == "email" else "portal kit"
+        target = c.get("file") or c.get("status")
+        out.append(f"- {kind}: **{_cell(i['company'])}**, {_cell(i['title'])} ({i['band']} {i['fit_score']}, "
+                   f"resume {i['resume_key']}{', variant ' + i['pitch_variant'] if i.get('pitch_variant') else ''}) -> {target}")
+    for c in stage.get("existing", []):
+        i = c["item"]
+        out.append(f"- already drafted earlier: {_cell(i['company'])}, {_cell(i['title'])}"
+                   + (f" -> {c['file']}" if c.get("file") else ""))
+    if not stage.get("created") and not stage.get("existing"):
+        out.append("_No new drafts or kits._")
+    for key, problems in (stage.get("rejected") or {}).items():
+        out.append(f"- rejected by guard `{key}`: {'; '.join(problems)}")
+    for i, why in stage.get("closed", []):
+        out.append(f"- closed at liveness check: {_cell(i['company'])}, {_cell(i['title'])} ({why})")
+    for i, why in stage.get("unknown", []):
+        out.append(f"- liveness unknown, retry next run: {_cell(i['company'])}, {_cell(i['title'])} ({why})")
+    for i in stage.get("network_waiting", []):
+        out.append(f"- LinkedIn pitch (Network tab, Phase 3): {_cell(i['company'])}, {_cell(i['title'])}")
+    sync = stage.get("sync") or {}
+    if sync:
+        out.append(f"- sync: {json.dumps({k: v for k, v in sync.items()}, default=str)[:600]}")
+    if stage.get("sheet"):
+        out.append(f"- sheet: {stage['sheet']}")
+    return out + [""]
+
+
 def render(ctx: dict) -> str:
     """ctx: date, run_id, counts, usage, errors, items (shortlist() output for today's
     evaluations), uncertain, suppressed, ineligible_counts, existing_labels."""
@@ -79,10 +131,14 @@ def render(ctx: dict) -> str:
     c = ctx["counts"]
     out += ["## Summary", "",
             ", ".join(f"{k}: {v}" for k, v in c.items()), ""]
-    if ctx.get("usage"):
-        out += [f"Claude usage: `{json.dumps(ctx['usage'], default=str)[:1500]}`", ""]
+    for line in usage_lines(ctx.get("usage")):
+        out += [line]
+    out += [""]
+    if ctx.get("notes"):
+        out += [f"> {n}" for n in ctx["notes"]] + [""]
     if ctx.get("errors"):
         out += ["## Errors", ""] + [f"- {e}" for e in ctx["errors"]] + [""]
+    out += outreach_section(ctx.get("outreach"), ctx.get("live"))
 
     out += ["## Shortlist", "",
             "Ranked by band, then score. `queued` = over today's cap for that route; it waits while fresh.",

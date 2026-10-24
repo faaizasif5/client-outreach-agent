@@ -137,20 +137,31 @@ def initial_status(outreach_type: str) -> str:
     return "drafting" if outreach_type == "direct_email" else "pending"
 
 
-def transition_application(conn, app_id: int, new_status: str, now: datetime) -> None:
+def _history(conn, kind: str, ref, old: str | None, new: str, now: datetime, source: str) -> None:
+    conn.execute("INSERT INTO status_history (kind, ref, old_status, new_status, source, changed_at) "
+                 "VALUES (?,?,?,?,?,?)", (kind, str(ref), old, new, source, iso(now)))
+
+
+def transition_application(conn, app_id: int, new_status: str, now: datetime,
+                           source: str = "tool", **fields) -> None:
+    """Move an application to new_status (checked against the allowed transitions).
+    Extra columns (draft_id, thread_id, last_error, ...) can be set in the same update."""
     app = conn.execute("SELECT * FROM applications WHERE id=?", (app_id,)).fetchone()
     allowed = TRANSITIONS[app["outreach_type"]].get(app["status"], set())
     if new_status not in allowed:
         raise IllegalTransition(f"{app['outreach_type']}: {app['status']} -> {new_status}")
+    if new_status == "sent":
+        fields.setdefault("sent_at", iso(now))
     with transaction(conn):
-        extra = ", sent_at=?" if new_status == "sent" else ""
-        params = [new_status, iso(now)] + ([iso(now)] if extra else []) + [app_id]
-        conn.execute(f"UPDATE applications SET status=?, updated_at=?{extra} WHERE id=?", params)
+        sets = "".join(f", {k}=?" for k in fields)
+        conn.execute(f"UPDATE applications SET status=?, updated_at=?{sets} WHERE id=?",
+                     [new_status, iso(now), *fields.values(), app_id])
+        _history(conn, "application", app_id, app["status"], new_status, now, source)
         if new_status == CONTACT_STATUS[app["outreach_type"]]:
             _mark_contacted(conn, app["company_norm"], app["company_domain"], now)
 
 
-def transition_network(conn, network_id: str, new_status: str, now: datetime) -> None:
+def transition_network(conn, network_id: str, new_status: str, now: datetime, source: str = "tool") -> None:
     row = conn.execute("SELECT n.*, j.company_norm, j.company_domain FROM network n "
                        "JOIN jobs j ON j.job_key = n.job_key WHERE n.id=?", (network_id,)).fetchone()
     if new_status not in NETWORK_TRANSITIONS.get(row["status"], set()):
@@ -158,6 +169,7 @@ def transition_network(conn, network_id: str, new_status: str, now: datetime) ->
     with transaction(conn):
         conn.execute("UPDATE network SET status=?, updated_at=? WHERE id=?",
                      (new_status, iso(now), network_id))
+        _history(conn, "network", network_id, row["status"], new_status, now, source)
         if new_status == "requested" and row["connection_note"]:
             _mark_contacted(conn, row["company_norm"], row["company_domain"], now)
 
