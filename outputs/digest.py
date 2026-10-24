@@ -93,7 +93,7 @@ def outreach_section(stage: dict | None, live: bool) -> list[str]:
     out = [f"## Drafts and kits ({where})", ""]
     for c in stage.get("created", []):
         i = c["item"]
-        kind = "email" if i["route"] == "email" else "portal kit"
+        kind = {"email": "email", "portal": "portal kit", "network": "LinkedIn pitch"}.get(i["route"], i["route"])
         target = c.get("file") or c.get("status")
         out.append(f"- {kind}: **{_cell(i['company'])}**, {_cell(i['title'])} ({i['band']} {i['fit_score']}, "
                    f"resume {i['resume_key']}{', variant ' + i['pitch_variant'] if i.get('pitch_variant') else ''}) -> {target}")

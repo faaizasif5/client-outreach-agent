@@ -67,6 +67,8 @@ def _data_page(html: str, container: str, attribute: str):
 def extract(html: str, sel: dict) -> list[dict]:
     """Listings as plain dicts (keys from the page's field map). Raises ValueError if the
     container is missing, so health checks can call the page broken."""
+    if sel["mode"] == "xhr":
+        return _extract_xhr(html, sel)
     if sel["mode"] == "json":
         cfg = sel["json"]
         data = _data_page(html, cfg["container"], cfg["attribute"])
@@ -93,6 +95,28 @@ def extract(html: str, sel: dict) -> list[dict]:
         for item in items:
             if not item.get("url") and item.get("id"):
                 item["url"] = sel["url_template"].format(**{k: v for k, v in item.items() if v is not None})
+    return items
+
+
+def _extract_xhr(payload: str, sel: dict) -> list[dict]:
+    """Logged-in companies page: captured background responses, flattened to one item per job.
+    Only engineering jobs that are remote (yes/only) are kept (`include` in the YAML)."""
+    cfg = sel["xhr"]
+    try:
+        data = json.loads(payload or "")
+    except json.JSONDecodeError:
+        raise ValueError("results container not found")
+    companies = _dig(data, cfg["companies_path"]) if isinstance(data, dict) else None
+    if not isinstance(companies, list):
+        raise ValueError("listings path not found")
+    include = cfg.get("include") or {}
+    items = []
+    for company in companies:
+        base = {field: company.get(key) for field, key in cfg["company_fields"].items()}
+        for job in company.get(cfg["jobs_key"]) or []:
+            item = {**base, **{field: job.get(key) for field, key in cfg["job_fields"].items()}}
+            if all(str(item.get(field)) in [str(v) for v in allowed] for field, allowed in include.items()):
+                items.append(item)
     return items
 
 
@@ -137,6 +161,7 @@ def parse_waas_job(html: str, sel: dict) -> str:
 
 def to_raw(listing: dict, detail: dict, now: datetime, rank: int) -> RawJob:
     job, company = detail.get("job") or {}, detail.get("company") or {}
+    company = {**{k: listing.get(k) for k in ("team_size", "one_liner", "website") if listing.get(k)}, **company}
     facts = [f"Location: {listing.get('location') or job.get('location') or ''}",
              f"Visa: {listing.get('visa') or job.get('visa') or job.get('sponsorsVisa') or ''}",
              f"Experience: {listing.get('experience') or job.get('minExperience') or ''}",
@@ -146,13 +171,14 @@ def to_raw(listing: dict, detail: dict, now: datetime, rank: int) -> RawJob:
         facts.append(f"Team size: {team} employees")
     if company.get("one_liner"):
         facts.append(f"Company: {company['one_liner']}")
-    description = "\n".join(facts) + "\n\n" + (job.get("description") or "")
+    description = "\n".join(facts) + "\n\n" + (job.get("description") or listing.get("description") or "")
     url = absolute(listing.get("url"))
     return RawJob(
         source="yc", external_id=str(listing.get("id")), url=url or "",
         company=listing.get("company") or company.get("name") or "", title=listing.get("title") or "",
         location_text=listing.get("location") or job.get("location"),
-        description=description, posted_at=parse_age(listing.get("created") or job.get("createdAt"), now),
+        description=description,
+        posted_at=detail.get("posted_at") or parse_age(listing.get("created") or job.get("createdAt"), now),
         apply_url=url, company_url=company.get("website") or company.get("url") or None,
         links=[l for l in (company.get("website") or company.get("url"),) if l], feed_rank=rank,
         tags=[listing.get("role") or ""])
@@ -164,7 +190,7 @@ def founders(detail: dict) -> list[dict]:
     for f in (detail.get("company") or {}).get("founders") or []:
         if f.get("full_name") and f.get("is_active", True):
             out.append({"name": f["full_name"], "title": f.get("title") or "Founder",
-                        "linkedin_url": (f.get("linkedin_url") or "").rstrip("/") or None,
+                        "linkedin_url": (f.get("linkedin_url") or f.get("linkedin") or "").rstrip("/") or None,
                         "source": "yc_page", "verified": 1})
     return out
 
@@ -185,7 +211,25 @@ def load_results_page(url: str, user_agent: str, timeout_ms: int = 60000) -> tup
             browser.close()
 
 
+def parse_us_date(text: str | None) -> datetime | None:
+    """'10/21/2026' (Work at a Startup's updated date) -> datetime (UTC midnight)."""
+    from datetime import timezone
+    m = re.match(r"^\s*(\d{1,2})/(\d{1,2})/(\d{4})\s*$", text or "")
+    return datetime(int(m.group(3)), int(m.group(1)), int(m.group(2)), tzinfo=timezone.utc) if m else None
+
+
 def _detail(page: dict, listing: dict, http, now: datetime, max_age_days: int) -> dict:
+    if page["detail"]["kind"] == "inline":
+        # A job last updated over max_age_days ago was also created then: stale, no request needed.
+        updated = parse_us_date(listing.get("updated"))
+        company = {"name": listing.get("company"), "website": listing.get("website"),
+                   "team_size": listing.get("team_size"), "one_liner": listing.get("one_liner"),
+                   "founders": listing.get("founders") or []}
+        if updated and now - updated > timedelta(days=max_age_days):
+            return {"job": {}, "company": company, "posted_at": updated}
+        url = page["detail"]["company_url_template"].format(company_slug=listing.get("company_slug"))
+        public = parse_company_page(http.get(url, ttl_hours=24), page, listing["id"])
+        return {"job": public.get("job") or {}, "company": company}
     if page["detail"]["kind"] == "yc_job":
         return parse_detail(http.get(absolute(listing["url"]), ttl_hours=24 * 30), page)
     # waas: dates + founders from the YC company page (cached a week), text from the job page
@@ -203,6 +247,14 @@ def _broken_page(conn, page, result, html, now, info, selectors_path, snapshots,
     from fetchers import yc_health, yc_repair
     from pipeline.claude_cli import run_claude
     name = page["name"]
+    if page.get("repair") is False:   # logged-in page: no snapshot, never sent to Claude
+        yc_health.record(conn, result, 0, now, name)
+        info["manual_fix_needed"] = True
+        if result["checks"].get("page_error") == "HTTP 401":
+            info["notes"].append(f"YC page {name}: your session expired. Run: python main.py yc-login")
+        else:
+            info["notes"].append(f"YC page {name} broken ({result['checks']}); fix config/yc_selectors.yaml by hand.")
+        return
     snap = yc_health.save_snapshot(html, snapshots, now, name)
     yc_health.record(conn, result, 0, now, name)
     info["notes"].append(f"YC page {name} broken ({result['checks']}); snapshot {snap.name}; skipped this run.")
@@ -229,7 +281,7 @@ def _broken_page(conn, page, result, html, now, info, selectors_path, snapshots,
         conn.execute("INSERT INTO yc_repairs (attempted_at, kind, accepted, details, page) VALUES (?,?,0,?,?)",
                      (repo.iso(now), "disabled", "broken for 14 days", name))
         info["notes"].append(f"YC page {name} broken for 14 days: disabled in config/yc_selectors.yaml.")
-        if not any(p.get("enabled", True) for p in doc["pages"]):
+        if not any(p.get("enabled", True) for p in doc["pages"] if p.get("repair", True) is not False):
             env = ROOT / ".env"
             lines = [l for l in (env.read_text(encoding="utf-8").splitlines() if env.exists() else [])
                      if not l.startswith("YC_ENABLED=")]
@@ -258,7 +310,13 @@ def fetch(conn, http, now: datetime, *, cfg: dict, load_page=None, claude=None,
     for page_cfg in [p for p in doc["pages"] if p.get("enabled", True)]:
         page = page_rules(doc, page_cfg["name"])
         name = page["name"]
-        status, html = (load_page or load_results_page)(page["results_url"], cfg["http"]["user_agent"])
+        if page.get("requires_session") and not load_page and not has_session():
+            info["notes"].append(f"YC page {name} skipped: no saved session (python main.py yc-login).")
+            continue
+        if page["mode"] == "xhr" and not load_page:
+            status, html = load_logged_in_companies(page["results_url"], page["xhr"])
+        else:
+            status, html = (load_page or load_results_page)(page["results_url"], cfg["http"]["user_agent"])
         result = yc_health.check(status, html, page, yc_health.recent_counts(conn, page=name))
         info["pages"][name] = {"status": result["status"], "count": result["count"]}
         if result["status"] == "broken":
@@ -352,3 +410,59 @@ def load_logged_in_page(url: str, user_agent: str | None = None, timeout_ms: int
             return (resp.status if resp else 0), page.content()
         finally:
             ctx.close()
+
+
+
+def load_logged_in_companies(url: str, xhr: dict, profile_dir: Path = PROFILE_DIR,
+                             timeout_ms: int = 90000) -> tuple[int, str]:
+    """Headless load with your saved session; keeps only the matching background responses
+    (company + job data), scrolling for up to max_batches. Redirect away -> 401 (session expired).
+    Nothing else from the page (your profile, messages) is kept."""
+    from playwright.sync_api import sync_playwright
+    batches = []
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(str(profile_dir), headless=True)
+        try:
+            page = ctx.new_page()
+
+            def keep(resp):
+                if xhr["match"] in resp.url and resp.request.method == "POST":
+                    try:
+                        batches.append(resp.json())
+                    except Exception:
+                        pass
+            page.on("response", keep)
+            resp = page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            if urlsplit(page.url).path.rstrip("/") != urlsplit(url).path.rstrip("/"):
+                return 401, ""
+            seen = len(batches)
+            for _ in range(xhr["max_batches"] - 1):
+                page.mouse.wheel(0, 6000)
+                page.wait_for_timeout(2500)      # polite: one batch at a time
+                if len(batches) == seen:
+                    break
+                seen = len(batches)
+            status = resp.status if resp else 0
+        finally:
+            ctx.close()
+    return status, json.dumps({xhr["companies_path"]: prune_companies(batches[:xhr["max_batches"]], xhr)})
+
+
+def prune_companies(batches: list[dict], xhr: dict) -> list[dict]:
+    """Keep only the company/job fields the YAML names (drops anything tied to your account,
+    such as saved-search state attached to each job)."""
+    company_keys = set(xhr["company_fields"].values()) | {"id"}
+    job_keys = set(xhr["job_fields"].values())
+    out, ids = [], set()
+    for b in batches:
+        for c in b.get(xhr["companies_path"]) or []:
+            if c.get("id") in ids:
+                continue
+            ids.add(c.get("id"))
+            company = {k: v for k, v in c.items() if k in company_keys}
+            company["founders"] = [{k: f.get(k) for k in ("full_name", "linkedin", "title") if k in f}
+                                   for f in c.get("founders") or []]
+            company[xhr["jobs_key"]] = [{k: v for k, v in j.items() if k in job_keys}
+                                        for j in c.get(xhr["jobs_key"]) or []]
+            out.append(company)
+    return out

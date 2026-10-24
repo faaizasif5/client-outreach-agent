@@ -25,6 +25,9 @@ def compose(counts: dict) -> dict:
     if drafts or kits:
         parts.append(f"{_plural(drafts, 'draft')} ready + {_plural(kits, 'new portal job')} in the tracker. "
                      f"{_plural(review, 'job')} to review.")
+    if counts.get("pitches_created"):
+        n = counts["pitches_created"]
+        parts.append(f"{n} LinkedIn pitch{'' if n == 1 else 'es'} in the Network tab.")
     if counts.get("yc_manual_fix"):
         parts.append("YC scraper needs a manual fix.")
     if not parts:

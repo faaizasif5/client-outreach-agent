@@ -41,3 +41,28 @@ pages:
       postings_path: props.jobPostings
       job_path: props.job
       description_key: descriptionHtml
+  - name: waas_companies         # Work at a Startup companies directory, newest first: needs YOUR saved
+    enabled: true                # session (python main.py yc-login). Never auto-repaired by Claude:
+    requires_session: true       # logged-in pages carry account data, so they are never sent anywhere.
+    repair: false
+    results_url: https://www.workatastartup.com/companies?demographic=any&hasEquity=any&hasSalary=any&industry=any&interviewProcess=any&layout=list-compact&sortBy=created_desc&tab=any&usVisaNotRequired=any
+    mode: xhr                    # listings arrive in background requests while the page scrolls
+    xhr:
+      match: /companies/fetch    # only these responses are kept (company + job data, no profile)
+      max_batches: 6             # ~10 companies per batch
+      companies_path: companies
+      jobs_key: jobs
+      company_fields: {company: name, company_slug: slug, website: website, team_size: team_size,
+                       one_liner: one_liner, founders: founders}
+      job_fields: {id: id, title: title, url: show_path, location: pretty_location_or_remote,
+                   remote: remote, role: pretty_role, visa: pretty_sponsors_visa,
+                   experience: pretty_min_experience, salary: pretty_salary_range,
+                   updated: pretty_updated_at, description: description}
+      include: {role: [Engineering], remote: ["yes", "only"]}
+    detail:
+      kind: inline               # text is in the listing; the posting date comes from the public YC company page
+      company_url_template: https://www.ycombinator.com/companies/{company_slug}
+      container: "[data-page]"
+      attribute: data-page
+      company_path: props.company
+      postings_path: props.jobPostings

@@ -9,9 +9,14 @@ Rules:
 - Seniority: the candidate has {years} years of professional experience (mid-level). If the
   role clearly needs much more (e.g. staff/principal, 7+ years, leading teams), set skip=true
   with too_senior. If it is an internship or new-grad role, use too_junior.
-- If the listing hints at a location or work-authorization restriction that excludes someone
-  based in Pakistan (e.g. "must be in the EU", "US residents"), set skip=true with
-  hidden_location_restriction.
+- Each listing has a bucket. bucket "eligible": if the listing hints at a location or
+  work-authorization restriction that excludes someone based in Pakistan (e.g. "must be in the
+  EU", "US residents"), set skip=true with hidden_location_restriction.
+- Any other bucket (remote_us_stretch, us_auth_stretch, explicit_us_only) is a US-focused role the
+  candidate deliberately pitches as a B2B contractor alternative. Its US location or
+  work-authorization requirement is already known and accepted: never skip or lower the score
+  for it. Judge only skills and seniority fit. Use hidden_location_restriction there only for a
+  different restriction (e.g. "EU only", "must be onsite in Paris").
 - evidence: 1-3 short strings, each starting with "Listing:" (a short quote from the listing)
   or "Profile:" (a fact or skill from the candidate section).
 - reason: max 200 characters, why this resume fits this role.

@@ -71,6 +71,8 @@ keywords:
     - front[- ]?end
     - forward deployed
     - software
+    - member of technical staff
+    - '\bmts\b'
   # A title piece containing one of these is not an IC engineering role.
   role_title_exclude:
     - manager

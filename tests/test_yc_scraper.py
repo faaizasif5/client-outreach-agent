@@ -16,6 +16,7 @@ JOB = (FIXTURES / "yc_job.html").read_text(encoding="utf-8")
 WAAS = (FIXTURES / "waas_results.html").read_text(encoding="utf-8")
 COMPANY = (FIXTURES / "yc_company.html").read_text(encoding="utf-8")
 WAAS_JOB = (FIXTURES / "waas_job.html").read_text(encoding="utf-8")
+COMPANIES = (FIXTURES / "waas_companies.json").read_text(encoding="utf-8")
 CFG = {"http": {"user_agent": "test"}, "yc": {"repair_model": "sonnet"}, "max_age_days": 14}
 
 
@@ -31,8 +32,10 @@ def rules(sel_path, name="yc_board"):
     return yc_scraper.page_rules(yc_scraper.load_selectors(sel_path), name)
 
 
-def pages(board=GOOD, waas=WAAS):
+def pages(board=GOOD, waas=WAAS, companies=(200, COMPANIES)):
     def load(url, ua):
+        if "workatastartup.com/companies" in url:
+            return companies
         return (200, waas) if "workatastartup" in url else (200, board)
     return load
 
@@ -132,7 +135,8 @@ def test_fetch_both_pages_only_new_details_and_founders(conn, sel_path):
     http = Http()
     raws, info = yc_scraper.fetch(conn, http, NOW, cfg=CFG, load_page=pages(), selectors_path=sel_path)
     assert info["status"] == "healthy" and info["pages"]["yc_board"]["count"] == 8
-    assert info["pages"]["waas_jobs"]["count"] == 6 and len(raws) == 14
+    assert info["pages"]["waas_jobs"]["count"] == 6 and info["pages"]["waas_companies"]["count"] == 2
+    assert len(raws) == 15                     # the fresh logged-in job is also on waas_jobs: read once
     assert all("ycombinator.com" in c or "workatastartup.com" in c for c in http.calls)
     assert conn.execute("SELECT COUNT(*) FROM people WHERE source='yc_page' AND verified=1").fetchone()[0] >= 2
     for raw in raws:   # simulate ingest, then a second run fetches no detail pages
@@ -144,7 +148,7 @@ def test_fetch_both_pages_only_new_details_and_founders(conn, sel_path):
     http.calls.clear()
     raws2, info2 = yc_scraper.fetch(conn, http, NOW + timedelta(days=1), cfg=CFG, load_page=pages(),
                                     selectors_path=sel_path)
-    assert http.calls == [] and info2["new"] == 0 and len(raws2) == 14
+    assert http.calls == [] and info2["new"] == 0 and len(raws2) == 15
 
 
 def test_same_job_on_both_pages_read_once(conn, sel_path):
@@ -152,14 +156,14 @@ def test_same_job_on_both_pages_read_once(conn, sel_path):
     waas = WAAS.replace("112545", next(iter(board_ids)))            # same YC job id on both pages
     raws, _ = yc_scraper.fetch(conn, Http(), NOW, cfg=CFG, load_page=pages(waas=waas), selectors_path=sel_path)
     ids = [r.external_id for r in raws]
-    assert len(ids) == len(set(ids)) == 13
+    assert len(ids) == len(set(ids)) == 15
 
 
 def test_one_broken_page_does_not_stop_the_other(conn, sel_path, tmp_path):
     raws, info = yc_scraper.fetch(conn, Http(), NOW, cfg=CFG, load_page=pages(waas=BROKEN),
                                   claude=fake_claude(ClaudeError("nope")), selectors_path=sel_path,
                                   snapshots=tmp_path / "snap")
-    assert info["status"] == "partial" and len(raws) == 8
+    assert info["status"] == "partial" and len(raws) == 10
     assert (tmp_path / "snap" / f"{NOW:%Y-%m-%d}-waas_jobs.html").exists()
 
 
@@ -246,7 +250,8 @@ def test_page_disabled_after_14_broken_days_then_whole_yc(conn, sel_path, tmp_pa
     assert doc["pages"][0]["enabled"] is False and doc["pages"][1]["enabled"] is True
     assert not (tmp_path / ".env").exists()                      # the other page still works
     for day in range(16, 32):
-        yc_scraper.fetch(conn, Http(), NOW + timedelta(days=day), cfg=CFG, load_page=pages(board=BROKEN, waas=BROKEN),
+        yc_scraper.fetch(conn, Http(), NOW + timedelta(days=day), cfg=CFG,
+                         load_page=pages(board=BROKEN, waas=BROKEN, companies=(200, "not json")),
                          claude=claude, selectors_path=sel_path, snapshots=tmp_path / "snap")
     assert "YC_ENABLED=false" in (tmp_path / ".env").read_text(encoding="utf-8")
     raws, info = yc_scraper.fetch(conn, Http(), NOW + timedelta(days=40), cfg=CFG, load_page=pages(),
@@ -259,3 +264,63 @@ def test_snapshot_is_stripped():
     html = '<html><body onload="x()"><script>evil()</script><style>a{}</style><div onclick="y()">hi</div></body></html>'
     out = yc_health.strip_snapshot(html)
     assert "script" not in out and "onclick" not in out and "onload" not in out and "hi" in out
+
+
+
+# ---------------------------------------------------------------- logged-in companies page (your session)
+
+def test_companies_payload_keeps_only_remote_engineering_jobs(sel_path):
+    items = yc_scraper.extract(COMPANIES, rules(sel_path, "waas_companies"))
+    assert [(i["title"], i["remote"]) for i in items] == [("Forward Deployed Engineer", "yes"),
+                                                            ("Applied Audio ML Engineer", "only")]
+    assert all(i["url"].startswith("https://www.workatastartup.com/jobs/") for i in items)
+    assert all(i["founders"] for i in items)
+
+
+def test_prune_drops_account_data(sel_path):
+    xhr = rules(sel_path, "waas_companies")["xhr"]
+    raw = {"companies": [{"id": "1", "name": "Acme", "slug": "acme", "secret_note": "x",
+                          "founders": [{"full_name": "A B", "linkedin": "https://linkedin.com/in/ab", "email": "a@b.c"}],
+                          "jobs": [{"id": "9", "title": "Eng", "jobs_search": {"state": "user_saved"}}]}]}
+    out = yc_scraper.prune_companies([raw], xhr)
+    text = json.dumps(out)
+    assert "jobs_search" not in text and "secret_note" not in text and "a@b.c" not in text
+
+
+def test_inline_detail_stale_without_request_and_fresh_dated_from_public_page(sel_path):
+    sel = rules(sel_path, "waas_companies")
+    fresh, stale = yc_scraper.extract(COMPANIES, sel)
+    http = Http()
+    d_stale = yc_scraper._detail(sel, stale, http, NOW, 14)
+    assert http.calls == [] and (NOW - d_stale["posted_at"]).days > 14      # updated 09/01 -> created earlier
+    d_fresh = yc_scraper._detail(sel, fresh, http, NOW, 14)
+    assert http.calls == ["https://www.ycombinator.com/companies/givecampus"]
+    raw = yc_scraper.to_raw(fresh, d_fresh, NOW, 0)
+    assert (NOW - raw.posted_at).days == 3 and "Forward Deployed" in raw.title
+    assert yc_scraper.founders(d_fresh)[0]["linkedin_url"].startswith("https://www.linkedin.com/in/")
+
+
+def test_expired_session_is_reported_never_repaired_or_snapshotted(conn, sel_path, tmp_path):
+    def no_claude(*a, **k):
+        raise AssertionError("logged-in pages must never be sent to Claude")
+    raws, info = yc_scraper.fetch(conn, Http(), NOW, cfg=CFG, load_page=pages(companies=(401, "")),
+                                  claude=no_claude, selectors_path=sel_path, snapshots=tmp_path / "snap")
+    assert info["pages"]["waas_companies"]["status"] == "broken" and info["manual_fix_needed"]
+    assert any("session expired" in n and "yc-login" in n for n in info["notes"])
+    assert not list((tmp_path / "snap").glob("*waas_companies*")) if (tmp_path / "snap").exists() else True
+    assert len(raws) == 14                                          # public pages still worked
+
+
+def test_no_session_skips_logged_in_page(conn, sel_path, monkeypatch):
+    monkeypatch.setattr(yc_scraper, "has_session", lambda: False)
+    loads = []
+
+    def results_page(url, ua):
+        loads.append(url)
+        return pages()(url, ua)
+    monkeypatch.setattr(yc_scraper, "load_results_page", results_page)
+    monkeypatch.setattr(yc_scraper, "load_logged_in_companies",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run without a session")))
+    raws, info = yc_scraper.fetch(conn, Http(), NOW, cfg=CFG, selectors_path=sel_path)
+    assert "waas_companies" not in info["pages"] and any("no saved session" in n for n in info["notes"])
+    assert all("companies?" not in u for u in loads)

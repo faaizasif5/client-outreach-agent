@@ -145,10 +145,12 @@ def scoring_candidates(conn, cfg, profile, now, rescore: bool = False) -> list[d
     """Unscored eligible/stretch jobs. rescore=True also re-scores already evaluated ones
     (manual model comparison / consistency check); the newest evaluation is the one used."""
     cutoff = repo.iso(now - timedelta(days=cfg["max_age_days"]))
-    unscored = "" if rescore else         "AND status IN ('new','score_missing') AND job_key NOT IN (SELECT job_key FROM evaluations)"
+    # keyword_filtered jobs are re-checked each run, so a keyword added to config.yaml takes effect.
+    unscored = "" if rescore else (
+        "AND status IN ('new','score_missing','keyword_filtered') AND job_key NOT IN (SELECT job_key FROM evaluations)")
     rows = conn.execute(
         "SELECT * FROM jobs WHERE eligibility IN ('eligible','stretch') AND lifecycle='open' "
-        f"AND status != 'keyword_filtered' AND posted_at >= ? {unscored}", (cutoff,)).fetchall()
+        f"AND posted_at >= ? {unscored}", (cutoff,)).fetchall()
     out = []
     for r in rows:
         if not keyword_match.is_engineering_role(r["title"], cfg):
@@ -248,6 +250,7 @@ def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dic
         "http_requests": http.requests_made if http else 0,
         "drafts_created": stage["drafts_created"] if stage else 0,
         "kits_created": stage["kits_created"] if stage else 0,
+        "pitches_created": stage.get("pitches_created", 0) if stage else 0,
         "replies": (stage or {}).get("replies", 0),
     })
     notes = list((google or {}).get("notes", []))

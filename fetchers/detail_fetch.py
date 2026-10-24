@@ -27,6 +27,8 @@ class Http:
         self.cache_dir = Path(cache_dir)
         self.session = session or requests.Session()
         self.session.headers["User-Agent"] = cfg["user_agent"]
+        # Some sites (Work at a Startup) answer 406 to requests that don't accept HTML.
+        self.session.headers["Accept"] = "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8"
         self.sleep, self.clock = sleep, clock
         self.last_request: dict[str, float] = {}
         self.requests_made = 0

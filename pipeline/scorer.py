@@ -72,7 +72,8 @@ def candidate_section(profile: dict) -> str:
 
 
 def job_block(job) -> str:
-    return (f"<listing job_key=\"{job['job_key']}\">\nCompany: {job['company']}\nTitle: {job['title']}\n"
+    return (f"<listing job_key=\"{job['job_key']}\">\nbucket: {job.get('bucket') or 'eligible'}\n"
+            f"Company: {job['company']}\nTitle: {job['title']}\n"
             f"Location: {job['location_text'] or ''}\n{job['trimmed']}\n</listing>")
 
 
@@ -111,10 +112,18 @@ def score_jobs(conn, jobs: list[dict], profile: dict, cfg: dict, run_id: str, no
                 "prompt_chars": len(prompt)}
     scored, rejected = set(), []
     allowed = set(resume_keys(profile))
+    bucket_of = {j["job_key"]: j.get("bucket") for j in jobs}
     for r in batch.results:
         if r.job_key not in sent:
             rejected.append(r.job_key)          # unknown job_key -> rejected
             continue
+        if bucket_of.get(r.job_key) not in (None, "eligible"):
+            # Stretch jobs are US-focused by design (pitched as a contractor alternative): the US
+            # requirement is never a reason to skip them. Other skip reasons still count.
+            reasons = [s for s in r.skip_reasons if s.value != "hidden_location_restriction"]
+            if len(reasons) != len(r.skip_reasons):
+                r.skip_reasons = reasons
+                r.skip = bool(reasons)
         model_key = r.resume.value
         resume_key, _ = resolve_resume(model_key if model_key in allowed else "fullstack", profile)
         conn.execute(

@@ -250,3 +250,20 @@ def test_rescore_adds_new_evaluations_and_uses_latest(setup):
     from pipeline import scorer
     assert {i["fit_score"] for i in scorer.shortlist(conn, cfg, profile, NOW)} == {65}
     assert again.kwargs["effort"] == cfg["scoring"]["effort"]
+
+
+def test_keyword_added_later_brings_filtered_jobs_back(setup):
+    conn, cfg, profile, reports = setup
+    from fetchers.models import RawJob
+    from datetime import timedelta as td
+    raw = RawJob(source="hn", external_id="4242", url="https://news.ycombinator.com/item?id=4242",
+                 company="Stoa", title="Member of Technical Staff", location_text="Stoa | MTS | Remote (Worldwide)",
+                 description="Remote (Worldwide). Django and Postgres. Email jobs@stoa.dev",
+                 posted_at=NOW - td(days=1))
+    cfg["keywords"]["role_title_include"] = [k for k in cfg["keywords"]["role_title_include"]
+                                             if "technical staff" not in k and "mts" not in k]
+    main.process_raw(conn, raw, cfg, profile, NOW, None)
+    assert main.scoring_candidates(conn, cfg, profile, NOW) == []
+    assert job(conn, "src:hn:4242")["status"] == "keyword_filtered"
+    cfg["keywords"]["role_title_include"].append("member of technical staff")
+    assert [j["job_key"] for j in main.scoring_candidates(conn, cfg, profile, NOW)] == ["src:hn:4242"]

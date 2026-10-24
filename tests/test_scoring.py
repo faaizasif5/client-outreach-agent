@@ -175,3 +175,28 @@ def test_company_with_outreach_is_suppressed(conn, cfg, prof):
     _job(conn, "new", company="acme"); _evaluate(conn, "new", 95)
     assert decisions(conn, cfg, prof)["new"] == "suppressed_company"
     assert repo.get_job(conn, "new")["status"] == "suppressed_company"
+
+
+def test_stretch_jobs_never_skipped_for_the_known_us_requirement(conn, cfg, prof):
+    _job(conn, "s1", company="a", eligibility="stretch", bucket="us_auth_stretch")
+    _job(conn, "s2", company="b", eligibility="stretch", bucket="us_auth_stretch")
+    _job(conn, "e1", company="c")
+    results = [
+        {**BASE, "job_key": "s1", "skip": True, "skip_reasons": ["hidden_location_restriction"]},
+        {**BASE, "job_key": "s2", "skip": True, "skip_reasons": ["hidden_location_restriction", "too_senior"]},
+        {**BASE, "job_key": "e1", "skip": True, "skip_reasons": ["hidden_location_restriction"]},
+    ]
+    jobs = _jobs(conn, ["s1", "s2", "e1"])
+    scorer.score_jobs(conn, jobs, prof, cfg, "run1", NOW, claude=fake_claude(results))
+    ev = {r["job_key"]: r for r in conn.execute("SELECT * FROM evaluations")}
+    assert ev["s1"]["skip"] == 0 and json.loads(ev["s1"]["skip_reasons"]) == []
+    assert ev["s2"]["skip"] == 1 and json.loads(ev["s2"]["skip_reasons"]) == ["too_senior"]
+    assert repo.get_job(conn, "s1")["eligibility"] == "stretch"          # not knocked out
+    assert repo.get_job(conn, "e1")["eligibility"] == "ineligible"       # eligible bucket: still applies
+
+
+def test_score_prompt_tells_claude_the_bucket(prof, cfg):
+    job = {"job_key": "k", "company": "A", "title": "Eng", "location_text": "Remote (US)", "trimmed": "x",
+           "kw_score": 1, "bucket": "us_auth_stretch"}
+    prompt, _ = scorer.build_prompt([job], prof, cfg)
+    assert "bucket: us_auth_stretch" in prompt and "never skip or lower the score" in prompt

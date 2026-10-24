@@ -103,7 +103,7 @@ def test_yc_jobs_flow_through_gate_and_founders_route_to_network(env, tmp_path, 
         return raws
     result = main.run_pipeline(conn, cfg, profile, now=NOW, fetchers={"yc": yc}, claude=FakeClaude(),
                                http=None, report_dir=reports, check_claude=None, source_info=info_holder)
-    assert result["counts"]["fetched_yc"] == 14
+    assert result["counts"]["fetched_yc"] == 15
     assert info_holder["yc"]["status"] == "healthy"
     blue = conn.execute("SELECT * FROM jobs WHERE company_norm='bluecargo'").fetchone()
     # 24 days old -> stale even though the tool first saw it today
