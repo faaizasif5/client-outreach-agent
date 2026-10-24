@@ -103,7 +103,7 @@ def score_jobs(conn, jobs: list[dict], profile: dict, cfg: dict, run_id: str, no
     sent = {j["job_key"] for j in jobs}
     try:
         batch, usage = claude(prompt, sc["model"], ScoreBatch, retries=sc["retries"],
-                              timeout=sc["timeout_seconds"])
+                              timeout=sc["timeout_seconds"], effort=sc.get("effort"))
     except ClaudeError as e:
         for key in sent:
             repo.update_job(conn, key, {"status": "score_missing"})

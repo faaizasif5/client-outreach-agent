@@ -136,12 +136,14 @@ def ingest(conn, raws: list[RawJob], cfg, profile, now, http, run_id, errors) ->
 
 # ---------------------------------------------------------------- pipeline
 
-def scoring_candidates(conn, cfg, profile, now) -> list[dict]:
+def scoring_candidates(conn, cfg, profile, now, rescore: bool = False) -> list[dict]:
+    """Unscored eligible/stretch jobs. rescore=True also re-scores already evaluated ones
+    (manual model comparison / consistency check); the newest evaluation is the one used."""
     cutoff = repo.iso(now - timedelta(days=cfg["max_age_days"]))
+    unscored = "" if rescore else         "AND status IN ('new','score_missing') AND job_key NOT IN (SELECT job_key FROM evaluations)"
     rows = conn.execute(
         "SELECT * FROM jobs WHERE eligibility IN ('eligible','stretch') AND lifecycle='open' "
-        "AND status IN ('new','score_missing') AND posted_at >= ? "
-        "AND job_key NOT IN (SELECT job_key FROM evaluations)", (cutoff,)).fetchall()
+        f"AND status != 'keyword_filtered' AND posted_at >= ? {unscored}", (cutoff,)).fetchall()
     out = []
     for r in rows:
         if not keyword_match.is_engineering_role(r["title"], cfg):
@@ -164,7 +166,7 @@ def claude_ready() -> str | None:
 
 def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dict, claude=run_claude,
                  http: Http | None = None, report_dir: Path = ROOT / "reports",
-                 check_claude=claude_ready) -> dict:
+                 check_claude=claude_ready, rescore: bool = False) -> dict:
     local = now.astimezone(PKT)
     run_id = local.strftime("%Y%m%dT%H%M%S%z")
     conn.execute("INSERT INTO runs (run_id, started_at, status) VALUES (?,?, 'running')",
@@ -181,7 +183,7 @@ def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dic
         counts[f"fetched_{name}"] = len(raws)
         ingest(conn, raws, cfg, profile, now, http, run_id, errors)
 
-    candidates = scoring_candidates(conn, cfg, profile, now)
+    candidates = scoring_candidates(conn, cfg, profile, now, rescore=rescore)
     counts["score_candidates"] = len(candidates)
     usage, status = None, "success"
     if candidates:
@@ -265,6 +267,8 @@ def main(argv=None) -> int:
     parser.add_argument("--force", action="store_true", help="bypass the once-per-day guard (Phase 2)")
     parser.add_argument("--sources", default="hn,remoteok,wwr")
     parser.add_argument("--profile", type=Path, help="profile YAML (default candidate/profile.yaml)")
+    parser.add_argument("--rescore", action="store_true",
+                        help="re-score already evaluated fresh jobs (model comparison; uses a Claude call)")
     args = parser.parse_args(argv)
 
     load_dotenv(ROOT / ".env")
@@ -294,7 +298,7 @@ def main(argv=None) -> int:
     }
     wanted = [s.strip() for s in args.sources.split(",")]
     fetchers = {n: f for n, f in available.items() if n in wanted and src.get(n, {}).get("enabled", True)}
-    result = run_pipeline(conn, cfg, profile, now=now, fetchers=fetchers, http=http)
+    result = run_pipeline(conn, cfg, profile, now=now, fetchers=fetchers, http=http, rescore=args.rescore)
     print(json.dumps({k: v for k, v in result.items() if k != "report"}, indent=2, default=str))
     print(f"Report: {result['report']}")
     return 0 if result["status"] == "success" else 1

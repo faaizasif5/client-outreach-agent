@@ -22,7 +22,10 @@ linkedin_notes_per_month: 5   # set to your real free-account limit (Phase 3)
 
 # Scoring (section 10)
 scoring:
-  model: haiku
+  # Spec section 10 says haiku. Using sonnet (medium effort) for calibration by choice; switch
+  # back to haiku and/or effort low if Pro usage is too high. effort: low|medium|high|null.
+  model: sonnet
+  effort: medium
   max_jobs: 30
   min_fit: 60
   strong_fit: 80

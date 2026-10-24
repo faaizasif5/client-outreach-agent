@@ -24,8 +24,9 @@ class FakeClaude:
     def __init__(self, fit=85):
         self.calls, self.prompts, self.fit = 0, [], fit
 
-    def __call__(self, prompt, model, schema, retries, timeout):
+    def __call__(self, prompt, model, schema, retries, timeout, **kw):
         self.calls += 1
+        self.kwargs = kw
         self.prompts.append(prompt)
         keys = re.findall(r'<listing job_key="([^"]+)">', prompt)
         results = [{"job_key": k, "resume": "fde" if "Forward" in prompt.split(k)[1][:200] else "fullstack",
@@ -193,3 +194,17 @@ def test_explicit_us_only_toggle_end_to_end(setup):
     main.process_raw(conn, raw, cfg, profile, NOW, None)
     r = job(conn, "src:hn:77")
     assert (r["eligibility"], r["eligibility_reason"]) == ("ineligible", "explicit_us_only_disabled")
+
+
+def test_rescore_adds_new_evaluations_and_uses_latest(setup):
+    conn, cfg, profile, reports = setup
+    run(setup, FakeClaude(fit=85))
+    n = conn.execute("SELECT COUNT(*) FROM evaluations").fetchone()[0]
+    again = FakeClaude(fit=65)
+    main.run_pipeline(conn, cfg, profile, now=NOW + timedelta(hours=1), fetchers=fixture_fetchers(),
+                      claude=again, http=None, report_dir=reports, check_claude=None, rescore=True)
+    assert again.calls == 1
+    assert conn.execute("SELECT COUNT(*) FROM evaluations").fetchone()[0] == 2 * n
+    from pipeline import scorer
+    assert {i["fit_score"] for i in scorer.shortlist(conn, cfg, profile, NOW)} == {65}
+    assert again.kwargs["effort"] == cfg["scoring"]["effort"]

@@ -23,9 +23,10 @@ class ClaudeError(Exception):
     pass
 
 
-def build_command(model: str) -> list[str]:
+def build_command(model: str, effort: str | None = None) -> list[str]:
     exe = shutil.which("claude") or "claude"
     return [exe, "-p", "--model", model, "--output-format", "json",
+            *(["--effort", effort] if effort else []),
             "--tools", "",                      # all built-in tools disabled
             "--strict-mcp-config",              # no MCP servers
             "--setting-sources", "project",     # empty cwd -> no project/user hooks or plugins
@@ -52,13 +53,14 @@ def _child_env() -> dict:
 
 
 def run_claude(prompt: str, model: str, schema: type[BaseModel],
-               retries: int = 2, timeout: int = 600, sleep=time.sleep) -> tuple[BaseModel, dict]:
+               retries: int = 2, timeout: int = 600, sleep=time.sleep,
+               effort: str | None = None) -> tuple[BaseModel, dict]:
     SANDBOX.mkdir(parents=True, exist_ok=True)
     last_err = None
     attempts = []
     for attempt in range(retries + 1):
         try:
-            proc = subprocess.run(build_command(model), input=prompt, capture_output=True,
+            proc = subprocess.run(build_command(model, effort), input=prompt, capture_output=True,
                                   text=True, encoding="utf-8", timeout=timeout, cwd=SANDBOX,
                                   env=_child_env())
             if proc.returncode != 0:
@@ -69,7 +71,7 @@ def run_claude(prompt: str, model: str, schema: type[BaseModel],
             if envelope.get("is_error"):
                 raise ClaudeError(str(envelope.get("result"))[:500])
             parsed = schema.model_validate_json(_extract_json(envelope["result"]))
-            return parsed, {"model": model, "attempts": len(attempts), "calls": attempts}
+            return parsed, {"model": model, "effort": effort, "attempts": len(attempts), "calls": attempts}
         except (ClaudeError, json.JSONDecodeError, ValidationError, KeyError,
                 subprocess.TimeoutExpired) as e:
             last_err = e

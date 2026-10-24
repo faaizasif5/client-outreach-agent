@@ -80,3 +80,12 @@ def test_nonzero_exit_is_an_error(fake, monkeypatch):
     monkeypatch.setattr(claude_cli.subprocess, "run", run)
     with pytest.raises(claude_cli.ClaudeError, match="Not logged in"):
         claude_cli.run_claude("p", "haiku", ScoreBatch, retries=0, sleep=lambda s: None)
+
+
+def test_effort_flag_only_when_set(fake):
+    f = fake([envelope(json.dumps(GOOD)), envelope(json.dumps(GOOD))])
+    claude_cli.run_claude("p", "sonnet", ScoreBatch, sleep=lambda s: None, effort="medium")
+    claude_cli.run_claude("p", "haiku", ScoreBatch, sleep=lambda s: None)
+    with_effort, without = f.calls[0][0], f.calls[1][0]
+    assert with_effort[with_effort.index("--effort") + 1] == "medium"
+    assert "--effort" not in without

@@ -61,7 +61,7 @@ def _job(conn, key, company="acme", eligibility="eligible", bucket="eligible", r
 
 
 def fake_claude(results):
-    def call(prompt, model, schema, retries, timeout):
+    def call(prompt, model, schema, retries, timeout, **kw):
         return schema.model_validate({"results": results}), {"usage": {"input_tokens": 10}}
     return call
 
