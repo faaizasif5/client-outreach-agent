@@ -65,6 +65,9 @@ def job_block(job: dict, description_chars: int) -> str:
             f"pitch_variant: {job.get('pitch_variant') or 'n/a'}\nresume: {job['resume_key']}\n"
             f"Company: {job['company']}\nTitle: {job['title']}\nLocation: {job.get('location_text') or ''}\n"
             + (f"Form questions:\n{questions}\n" if questions else "")
+            + f"network: {job.get('network_mode', 'none')}\n"
+            + f"tailor: {'yes' if job.get('tailor') else 'no'}\n"
+            + "".join(f"person: {p['name']} ({p.get('title') or 'unknown title'})\n" for p in job.get("people") or [])
             + f"{(job.get('description') or '')[:description_chars]}\n</listing>")
 
 
@@ -74,6 +77,12 @@ def build_prompt(jobs: list[dict], profile: dict, cfg: dict) -> str:
     # One shared facts block per resume key in use, so each job sees the right highlights.
     keys = sorted({j["resume_key"] for j in jobs})
     candidate = "\n\n".join(f"[resume {k}]\n{candidate_facts(profile, k)}" for k in keys)
+    tailor_keys = sorted({j["resume_key"] for j in jobs if j.get("tailor")})
+    if tailor_keys:
+        from pipeline import resume_builder
+        bank = resume_builder.load_bank()
+        candidate += "\n\nBULLET BANK (pre-approved; for tailored resumes pick IDs only)\n" + "\n".join(
+            f"[resume {k}]\n{resume_builder.bank_for_prompt(k, bank=bank)}" for k in tailor_keys)
     return template.format(overlap=profile["availability"]["us_overlap_hours"], trial=trial,
                            candidate=candidate,
                            jobs="\n\n".join(job_block(j, cfg["drafting"]["description_chars"]) for j in jobs))
@@ -111,7 +120,13 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
     problems = []
     if d.outreach_type.value != job["outreach_type"]:
         problems.append(f"outreach_type {d.outreach_type.value} != {job['outreach_type']}")
-    if job["outreach_type"] == "direct_email":
+    mode = job.get("network_mode", "none")
+    if job["outreach_type"] == "network_pitch":
+        if not (d.network and d.network.connection_note):
+            problems.append("LinkedIn pitch without a connection note")
+        elif "pakistan" not in d.network.connection_note.lower():
+            problems.append("LinkedIn pitch must say the candidate is based in Pakistan")
+    elif job["outreach_type"] == "direct_email":
         if not (d.subject and d.body.strip()):
             problems.append("missing subject or body")
         lines = [l for l in d.body.splitlines() if l.strip()]
@@ -119,10 +134,18 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
             problems.append(f"body too long ({len(lines)} lines)")
     elif not d.kit:
         problems.append("portal job without kit")
-    if job["bucket"] != "eligible" and job["outreach_type"] != "direct_email":
+    if job["bucket"] != "eligible" and (job["outreach_type"] == "application_brief" or d.kit):
         problems.append("stretch job must never get a portal kit")
 
+    if d.tailored and (not job.get("tailor") or d.tailored.resume_key.value != job["resume_key"]):
+        d.tailored = None                       # code decides which jobs get a tailored resume
+    if d.network and mode in ("none", "after_accept_only"):
+        d.network.connection_note = None        # code decides who gets a note (budget, emailed jobs)
+    if mode == "none":
+        d.network = None
     texts = [d.subject or "", d.body]
+    if d.network:
+        texts += [d.network.connection_note or "", d.network.after_accept_message]
     if d.kit:
         texts += [d.kit.cover_note] + [a.answer for a in d.kit.form_answers]
     text = "\n".join(texts)
@@ -143,7 +166,7 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
         problems.append("mentions scores/evidence")
     if RATE.search(text):
         problems.append("names a rate or price")
-    if job["bucket"] != "eligible":
+    if job["bucket"] != "eligible" and job["outreach_type"] == "direct_email":
         if "pakistan" not in d.body.lower():
             problems.append("stretch email must say the candidate is based in Pakistan")
         cost_mentions = len(COST.findall(d.body))

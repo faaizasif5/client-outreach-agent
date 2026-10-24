@@ -9,3 +9,5 @@ pytest>=8.0
 # Phase 2 (Gmail + Sheets + Drive)
 google-api-python-client>=2.100
 google-auth-oauthlib>=1.2
+# Phase 3 (YC scraper). After install: python -m playwright install chromium
+playwright>=1.40

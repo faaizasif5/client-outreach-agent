@@ -95,3 +95,41 @@ def reconcile(conn, gmail, now: datetime) -> dict:
             repo.transition_application(conn, app["id"], "replied", now, source="gmail", outcome="replied")
             out["replied"] += 1
     return out
+
+
+def cleanup_stale(conn, gmail, cfg: dict, now: datetime, liveness=None) -> dict:
+    """Freshness check #3: unsent drafts older than recheck_draft_days are re-checked; a closed
+    job or a draft older than expire_draft_days -> delete the draft, status expired."""
+    from datetime import timedelta
+    fu = cfg["followup"]
+    out = {"expired": 0, "checked": 0}
+    recheck = now - timedelta(days=fu["recheck_draft_days"])
+    expire = now - timedelta(days=fu["expire_draft_days"])
+    for app in conn.execute("SELECT a.*, j.sources, j.apply_url, j.last_seen_at, j.lifecycle FROM applications a "
+                            "JOIN jobs j ON j.job_key=a.job_key WHERE a.outreach_type='direct_email' "
+                            "AND a.status='drafted'").fetchall():
+        created = repo.parse_iso(app["created_at"])
+        if created > recheck:
+            continue
+        closed = app["lifecycle"] == "closed"
+        if not closed and created > expire and liveness:
+            out["checked"] += 1
+            closed = liveness(dict(app)) == "closed"
+            if closed:
+                repo.update_job(conn, app["job_key"], {"lifecycle": "closed"})
+        if closed or created <= expire:
+            gmail.delete_draft(app["draft_id"])     # only the tool's own draft, never sent mail
+            repo.transition_application(conn, app["id"], "expired", now)
+            out["expired"] += 1
+    return out
+
+
+def mark_no_response(conn, now: datetime, days: int) -> int:
+    """Sent with no reply `days` after sending -> no_response (run after reply detection)."""
+    from datetime import timedelta
+    cutoff = repo.iso(now - timedelta(days=days))
+    rows = conn.execute("SELECT id FROM applications WHERE outreach_type='direct_email' AND status='sent' "
+                        "AND sent_at < ?", (cutoff,)).fetchall()
+    for r in rows:
+        repo.transition_application(conn, r["id"], "no_response", now, outcome="no_response")
+    return len(rows)

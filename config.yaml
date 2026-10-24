@@ -39,6 +39,8 @@ sources:
     enabled: true
   remoteok:
     enabled: true
+  yc:
+    enabled: true              # YC_ENABLED=false in .env also turns it off (auto-set after 14 broken days)
   wwr:
     enabled: true
     feeds:
@@ -262,3 +264,18 @@ notifications:
 schedule:
   max_attempts_per_day: 3
   stale_lock_minutes: 60
+
+# ---------------------------------------------------------------- Phase 3
+
+followup:
+  recheck_draft_days: 3        # freshness check #3: unsent drafts older than this are re-checked
+  expire_draft_days: 7         # ...and deleted + expired after this (or as soon as the job closes)
+  no_response_days: 21         # sent with no reply after this -> no_response
+stats:
+  weekday: 0                   # Monday (Karachi time): weekly stats in the digest
+  stretch_flag_sent: 40        # flag a stretch sub-bucket with this many sends and no positive replies
+tailoring:
+  min_fit: 80                  # spec 11a: tailored resumes for top matches only
+  compiler: tools/tectonic/tectonic.exe
+yc:
+  repair_model: sonnet         # only used when the scraper is broken (max once a week)

@@ -24,7 +24,7 @@ from fetchers.detail_fetch import Http
 from fetchers.models import RawJob
 from outputs import digest, notify
 from pipeline import contacts as contacts_mod
-from pipeline import dedupe, eligibility, freshness, keyword_match, normalize, outreach, schedule, scorer
+from pipeline import dedupe, eligibility, freshness, keyword_match, normalize, outreach, people, schedule, scorer
 from pipeline.claude_cli import build_command, run_claude
 
 ROOT = Path(__file__).resolve().parent
@@ -83,10 +83,12 @@ def process_raw(conn, raw: RawJob, cfg: dict, profile: dict, now: datetime, http
                            newest_first_since=newest_first_since)
     closed = freshness.is_closed_text(f"{raw.description}\n{raw.replies_text}", cfg["eligibility"]["closed"])
 
+    # Founder LinkedIn links found on the YC page or the company's own site also count as a
+    # direct contact for stretch routing (Network tab pitch).
+    founders = json.loads(row["founder_links"] or "[]") + people.verified_profile_links(conn, row["company_norm"])
     merged_contacts = contacts_mod.Contacts(
         recruiting_email=row["contact_email"], apply_url=row["apply_url"],
-        founder_links=json.loads(row["founder_links"] or "[]"), preference=contacts.preference,
-        flags=contacts.flags)
+        founder_links=founders, preference=contacts.preference, flags=contacts.flags)
     result = eligibility.evaluate(
         title=row["title"], location_text=raw.location_text, description=raw.description,
         contacts=merged_contacts, team_size=row["team_size"], age_status=age.status, closed=closed,
@@ -170,7 +172,9 @@ def claude_ready() -> str | None:
 def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dict, claude=run_claude,
                  http: Http | None = None, report_dir: Path = ROOT / "reports",
                  check_claude=claude_ready, rescore: bool = False, live: bool = False,
-                 google: dict | None = None, draft_claude=None) -> dict:
+                 google: dict | None = None, draft_claude=None, source_info: dict | None = None) -> dict:
+    """source_info: filled by fetchers that report health (YC): {'yc': {...notes, status...}}."""
+    source_info = source_info if source_info is not None else {}
     local = now.astimezone(PKT)
     run_id = local.strftime("%Y%m%dT%H%M%S%z")
     conn.execute("INSERT INTO runs (run_id, started_at, status) VALUES (?,?, 'running')",
@@ -246,12 +250,19 @@ def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dic
         "kits_created": stage["kits_created"] if stage else 0,
         "replies": (stage or {}).get("replies", 0),
     })
+    notes = list((google or {}).get("notes", []))
+    for info in source_info.values():
+        notes += info.get("notes", [])
+        if info.get("repair_usage"):
+            usage["yc_repair"] = info["repair_usage"]
+    counts["yc_manual_fix"] = int(any(i.get("manual_fix_needed") for i in source_info.values()))
+    from outputs import stats
+    weekly = stats.weekly(conn, now, cfg) if stats.is_stats_day(now, cfg) else []
     existing = {r["job_key"]: r["label"] for r in conn.execute("SELECT job_key, label FROM labels")}
     report = digest.write_report(report_dir / f"{today}.md", {
         "date": today, "run_id": run_id, "counts": dict(counts), "usage": usage, "errors": errors,
         "items": todays, "uncertain": uncertain, "ineligible_counts": ineligible,
-        "existing_labels": existing, "outreach": stage, "live": live,
-        "notes": (google or {}).get("notes", [])})
+        "existing_labels": existing, "outreach": stage, "live": live, "notes": notes, "weekly": weekly})
     conn.execute("UPDATE runs SET finished_at=?, status=?, counts=?, usage=?, errors=? WHERE run_id=?",
                  (repo.iso(datetime.now(timezone.utc)), status, json.dumps(dict(counts)),
                   json.dumps(usage, default=str), json.dumps(errors), run_id))
@@ -347,11 +358,11 @@ def send_digest_draft(conn, gmail, run_id: str, report: Path, now: datetime) -> 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Job outreach agent")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "label", "setup-google"])
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "label", "setup-google", "yc-login"])
     parser.add_argument("files", nargs="*", type=Path, help="label: report files (default reports/*.md)")
     parser.add_argument("--dry-run", action="store_true", help="drafts/kits to reports/dry-run/, no Google calls")
     parser.add_argument("--force", action="store_true", help="bypass the once-per-day guard")
-    parser.add_argument("--sources", default="hn,remoteok,wwr")
+    parser.add_argument("--sources", default="hn,remoteok,wwr,yc")
     parser.add_argument("--profile", type=Path, help="profile YAML (default candidate/profile.yaml)")
     parser.add_argument("--rescore", action="store_true",
                         help="re-score already evaluated fresh jobs (model comparison; uses a Claude call)")
@@ -366,6 +377,11 @@ def main(argv=None) -> int:
     conn = repo.connect(ROOT / "data" / "jobs.db")
     cfg = load_config()
 
+    if args.command == "yc-login":   # you log in yourself; only the session is kept (data/yc_browser_profile)
+        from fetchers import yc_scraper
+        yc_scraper.interactive_login()
+        print("Session saved." if yc_scraper.has_session() else "No session saved.")
+        return 0
     if args.command == "label":
         files = args.files or sorted((ROOT / "reports").glob("*.md"))
         print(label_command(conn, files))
@@ -397,6 +413,13 @@ def main(argv=None) -> int:
         return _run(conn, cfg, profile, args, now, live)
 
 
+def _yc(conn, http, now, cfg, source_info: dict) -> list:
+    from fetchers import yc_scraper
+    raws, info = yc_scraper.fetch(conn, http, now, cfg=cfg)
+    source_info["yc"] = info
+    return raws
+
+
 def _run(conn, cfg, profile, args, now, live) -> int:
     http = Http(cfg["http"], ROOT / "data" / "cache")
     local = now.astimezone(PKT)
@@ -405,12 +428,14 @@ def _run(conn, cfg, profile, args, now, live) -> int:
         "hn": lambda: hn_whos_hiring.fetch(http, local),
         "remoteok": lambda: remoteok.fetch(http, local),
         "wwr": lambda: wwr.fetch(http, local, src["wwr"]["feeds"]),
+        "yc": lambda: _yc(conn, http, now, cfg, source_info),
     }
+    source_info: dict = {}
     wanted = [s.strip() for s in args.sources.split(",")]
     fetchers = {n: f for n, f in available.items() if n in wanted and src.get(n, {}).get("enabled", True)}
     google = google_context(conn, profile) if live else None
     result = run_pipeline(conn, cfg, profile, now=now, fetchers=fetchers, http=http, rescore=args.rescore,
-                          live=live, google=google)
+                          live=live, google=google, source_info=source_info)
     if live:
         try:
             send_digest_draft(conn, google["gmail"], result["run_id"], result["report"], now)

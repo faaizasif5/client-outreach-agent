@@ -12,14 +12,15 @@ from pathlib import Path
 from db import repo
 from outputs import drafts as gmail_drafts
 from outputs import sheets_tracker as st
-from pipeline import drafter, freshness
+from pipeline import drafter, freshness, people as people_mod, resume_builder
 from pipeline.claude_cli import run_claude
 from schemas.ai_output import FormAnswer
 
 log = logging.getLogger(__name__)
 PKT = timezone(timedelta(hours=5))
-TYPE = {"email": "direct_email", "portal": "application_brief"}
-CAP = {"email": "email_drafts", "portal": "portal_kits"}
+ROOT = Path(__file__).resolve().parent.parent
+TYPE = {"email": "direct_email", "portal": "application_brief", "network": "network_pitch"}
+CAP = {"email": "email_drafts", "portal": "portal_kits", "network": "linkedin_requests"}
 
 
 def _today_count(conn, table: str, outreach_type: str, now: datetime) -> int:
@@ -30,7 +31,7 @@ def _today_count(conn, table: str, outreach_type: str, now: datetime) -> int:
 
 def _cap(cfg, route) -> int:
     name = CAP[route]
-    return min(cfg["caps"][name], cfg["hard_max"][name])
+    return min(cfg["caps"][name], cfg["hard_max"].get(name, cfg["caps"][name]))
 
 
 def next_variant(conn) -> str:
@@ -48,20 +49,36 @@ def _slug(text: str) -> str:
 def write_dry_run_file(folder: Path, n: int, job: dict, draft, meta: dict) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{n:02d}-{_slug(job['company'])}-{_slug(job['title'])}.md"
+    via = {"email": f" to {job.get('contact_email')}", "portal": f" via {job.get('apply_url')}",
+           "network": " (LinkedIn connection note is the pitch)"}[meta["route"]]
     lines = [f"# {job['company']}: {job['title']}", "",
-             f"- Route: {meta['route']}" + (f" to {job['contact_email']}" if meta["route"] == "email" else
-                                             f" via {job.get('apply_url')}"),
+             f"- Route: {meta['route']}{via}",
              f"- Bucket: {job['bucket']}" + (f" (pitch variant {meta['pitch_variant']})" if meta["pitch_variant"] else ""),
              f"- Resume: {meta['resume_key']} -> {meta['resume_path']}"
              + (f" (attached as {meta['attachment']})" if meta["route"] == "email" else ""),
-             f"- Fit: {meta['band']} {meta['fit']}", f"- Listing: {meta['listing_url']}", ""]
+             f"- Fit: {meta['band']} {meta['fit']}", f"- Listing: {meta['listing_url']}"]
+    tailored = meta.get("tailored")
+    if tailored:
+        lines.append(f"- Tailored resume: {tailored['pdf']}" if tailored["status"] == "used"
+                     else f"- Tailored resume rejected ({'; '.join(tailored['problems'])}); standard PDF used")
+    lines.append("")
     if meta["route"] == "email":
         lines += ["## Subject", "", draft.subject or "", "", "## Body", "", draft.body, ""]
+    elif meta["route"] == "network":
+        pass
     else:
         lines += ["## Cover note", "", draft.kit.cover_note, "", "## Form answers", ""]
         for a in draft.kit.form_answers:
             lines += [f"**{a.question}**", "", a.answer, ""]
         lines += ["## Standard fields (copy-paste)", "", "```", meta["standard_fields"], "```", ""]
+    if draft.network:
+        lines += [f"## LinkedIn (network: {meta.get('network_mode')})", ""]
+        for i, p in enumerate(meta.get("people") or []):
+            lines.append(f"- {p['name']} ({p.get('title')}), {p.get('linkedin_url')} "
+                         f"[{p['source']}, {'verified' if p.get('verified') else 'check'}]")
+            note = draft.network.connection_note if i == 0 else None
+            lines.append(f"  - Connection note ({len(note)} chars): {note}" if note else "  - Connect without a note")
+        lines += ["", "After they accept:", "", draft.network.after_accept_message, ""]
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -71,17 +88,26 @@ def _listing_url(job: dict) -> str | None:
     return sources[0]["url"] if sources else job.get("apply_url")
 
 
-def pre_sync(conn, google: dict, cfg: dict, now: datetime) -> dict:
-    """Live only: recover/reconcile Gmail, sync the sheet, ATS confirmations, expiry, queued rows."""
+def pre_sync(conn, google: dict, cfg: dict, now: datetime, http=None, fetched_sources: set[str] = frozenset()) -> dict:
+    """Live only: recover/reconcile Gmail, stale drafts (freshness #3), no_response, sheet sync,
+    ATS confirmations, kit expiry, Network sync, queued rows."""
     out = {"errors": []}
     gmail, api, sid = google.get("gmail"), google.get("sheets"), google.get("sheet_id")
+
+    def liveness(job):
+        return freshness.check_liveness(job, http, cfg["eligibility"]["closed"], now=now,
+                                        fetched_sources=set(fetched_sources),
+                                        complete_feeds=set(cfg["outreach"]["complete_feeds"]))[0] if http else "open"
     steps = [
         ("gmail_recover", lambda: gmail_drafts.recover(conn, gmail, cfg, now)),
         ("gmail_reconcile", lambda: gmail_drafts.reconcile(conn, gmail, now)),
+        ("stale_drafts", lambda: gmail_drafts.cleanup_stale(conn, gmail, cfg, now, liveness=liveness)),
+        ("no_response", lambda: gmail_drafts.mark_no_response(conn, now, cfg["followup"]["no_response_days"])),
         ("sheet_sync", lambda: st.sync_from_sheet(conn, api, sid, now)),
         ("ats_confirmations", lambda: st.detect_confirmations(
             conn, gmail.recent_inbox_headers(), cfg["outreach"]["ats_confirmation"], now)),
         ("expired_kits", lambda: st.expire_pending(conn, api, sid, now, cfg["outreach"]["pending_kit_days"])),
+        ("network_sync", lambda: st.sync_network(conn, api, sid, now)),
         ("sheet_queue", lambda: st.flush_queue(conn, api, sid, now)),   # rows queued by an earlier run
     ]
     for name, step in steps:
@@ -93,24 +119,61 @@ def pre_sync(conn, google: dict, cfg: dict, now: datetime) -> dict:
     return out
 
 
+
+
+def _done(conn, item: dict, live: bool):
+    """Existing outreach for this job: applications / network rows (live) or dry_run_drafts."""
+    if not live:
+        return conn.execute("SELECT * FROM dry_run_drafts WHERE job_key=?", (item["job_key"],)).fetchone()
+    if item["route"] == "network":
+        return conn.execute("SELECT * FROM network WHERE job_key=?", (item["job_key"],)).fetchone()
+    return conn.execute("SELECT * FROM applications WHERE job_key=?", (item["job_key"],)).fetchone()
+
+
+def _created_today(conn, route: str, live: bool, now: datetime) -> int:
+    if not live:
+        return _today_count(conn, "dry_run_drafts", TYPE[route], now)
+    if route == "network":
+        today = now.astimezone(PKT).date()
+        rows = conn.execute("SELECT created_at FROM network WHERE COALESCE(connection_note,'') != ''").fetchall()
+        return sum(1 for r in rows if repo.parse_iso(r["created_at"]).astimezone(PKT).date() == today)
+    return _today_count(conn, "applications", TYPE[route], now)
+
+
+def gather_people(conn, http, item: dict, now: datetime) -> list[dict]:
+    """YC page people (saved by the YC scraper), the company's team page (fetched once), and
+    names or profile links from the listing itself. Max 2, founders first."""
+    if http:
+        try:
+            people_mod.fetch_team_page(conn, http, item["company_norm"], item.get("company_domain"), now)
+        except Exception as e:
+            log.info("team page lookup failed for %s: %s", item["company_norm"], e)
+    listing = people_mod.from_listing(item.get("description") or "", json.loads(item.get("founder_links") or "[]"),
+                                      item["company"])
+    people_mod.save_people(conn, item["company_norm"], listing, now)
+    return people_mod.people_for(conn, item["company_norm"])
+
+
+def _network_sheet_rows(conn, job: dict, now: datetime, linked: str) -> None:
+    for row in conn.execute("SELECT n.*, p.name, p.title, p.linkedin_url, p.source, p.verified FROM network n "
+                            "JOIN people p ON p.id=n.person_id WHERE n.job_key=?", (job["job_key"],)).fetchall():
+        st.enqueue(conn, st.NETWORK, row["id"], st.network_row(dict(row), job, linked), now)
+
+
 def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetime, run_id: str, http,
               live: bool, google: dict | None = None, report_dir: Path, fetched_sources: set[str],
               claude=run_claude) -> dict:
-    out = {"drafts_created": 0, "kits_created": 0, "created": [], "rejected": {}, "closed": [], "unknown": [],
-           "network_waiting": [], "errors": [], "usage": None, "existing": []}
+    out = {"drafts_created": 0, "kits_created": 0, "pitches_created": 0, "created": [], "rejected": {},
+           "closed": [], "unknown": [], "network_waiting": [], "errors": [], "usage": None, "existing": []}
     if live and google:
-        out["sync"] = pre_sync(conn, google, cfg, now)
+        out["sync"] = pre_sync(conn, google, cfg, now, http=http, fetched_sources=fetched_sources)
         out["errors"] += out["sync"].pop("errors")
         out["replies"] = (out["sync"].get("gmail_reconcile") or {}).get("replied", 0)
 
-    table = "applications" if live else "dry_run_drafts"
-    remaining = {r: _cap(cfg, r) - _today_count(conn, table, TYPE[r], now) for r in CAP}
+    remaining = {r: _cap(cfg, r) - _created_today(conn, r, live, now) for r in CAP}
     targets = []
     for item in (i for i in items if i["decision"] == "shortlisted"):
-        if item["route"] == "network":
-            out["network_waiting"].append(item)     # Network tab is Phase 3
-            continue
-        done = conn.execute(f"SELECT * FROM {table} WHERE job_key=?", (item["job_key"],)).fetchone()
+        done = _done(conn, item, live)
         if done:
             out["existing"].append({"item": item, "file": done["file_path"] if not live else None})
             continue
@@ -130,13 +193,35 @@ def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetim
         if status == "unknown":
             out["unknown"].append((item, why))
             continue
+        found = gather_people(conn, http, item, now)
+        if item["route"] == "network" and not found:
+            out["network_waiting"].append(item)
+            continue
         remaining[item["route"]] -= 1
         questions = []
         if item["route"] == "portal":
             questions = drafter.greenhouse_questions(http, item.get("apply_url")) if http else []
             questions = questions or list(cfg["drafting"]["default_questions"])
+        tailor = (item["route"] != "network" and item["fit_score"] >= cfg["tailoring"]["min_fit"]
+                  and resume_builder.available(item["resume_key"]))
         targets.append(dict(item, outreach_type=TYPE[item["route"]], form_questions=questions,
-                            pitch_variant=None))
+                            pitch_variant=None, people=found, tailor=tailor))
+
+    # Monthly LinkedIn note budget: pitches first (the note is their only message), then portal jobs by fit.
+    notes_left = cfg["linkedin_notes_per_month"] - people_mod.notes_used_this_month(conn, now)
+    for t in sorted(targets, key=lambda t: (t["route"] != "network", -t["fit_score"])):
+        if not t["people"]:
+            t["network_mode"] = "none"
+        elif t["route"] == "email":
+            t["network_mode"] = "after_accept_only"       # emailed: plain connect, no double outreach
+        elif notes_left > 0:
+            t["network_mode"] = "pitch" if t["route"] == "network" else "note"
+            notes_left -= 1
+        else:
+            t["network_mode"] = "after_accept_only"
+    for t in [t for t in targets if t["route"] == "network" and t["network_mode"] != "pitch"]:
+        targets.remove(t)
+        out["network_waiting"].append(t)                  # no note budget left this month
     variant = next_variant(conn)
     for t in targets:   # stretch pitches alternate a/b (price-mention test)
         if t["bucket"] != "eligible":
@@ -155,31 +240,49 @@ def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetim
     folder = report_dir / "dry-run" / now.astimezone(PKT).date().isoformat()
     by_key = {t["job_key"]: t for t in targets}
     standard = drafter.standard_fields(profile)
+    counter = {"email": "drafts_created", "portal": "kits_created", "network": "pitches_created"}
     for n, (key, d) in enumerate(result["accepted"].items(), 1):
         job = by_key[key]
         if d.kit:   # work-authorization questions are answered by code, truthfully
             d.kit.form_answers += [FormAnswer(question=q, answer=profile["answer_bank"]["work_authorization"])
                                    for q in job.get("auth_questions", [])]
+        tailored = None
+        if d.tailored:   # spec 11a: any failed check -> the standard PDF is attached instead
+            out_dir = (folder / "tailored" / f"{n:02d}-{_slug(job['company'])}" if not live
+                       else ROOT / "applications" / _slug(key))
+            tailored = resume_builder.build(key, job["resume_key"], d.tailored, profile, cfg, out_dir)
+            if tailored["status"] == "used":
+                job = dict(job, resume_path=tailored["pdf"])
+            if live:
+                conn.execute("INSERT OR REPLACE INTO tailored_resumes (job_key, resume_key, spec_json, pdf_path, "
+                             "status, problems, created_at) VALUES (?,?,?,?,?,?,?)",
+                             (key, job["resume_key"], d.tailored.model_dump_json(), tailored["pdf"],
+                              tailored["status"], json.dumps(tailored["problems"]), repo.iso(now)))
+            out.setdefault("tailored", []).append({"item": job, **tailored})
         meta = {"route": job["route"], "pitch_variant": job["pitch_variant"], "resume_key": job["resume_key"],
                 "resume_path": job["resume_path"], "attachment": cfg["outreach"]["attachment_filename"],
                 "band": job["band"], "fit": job["fit_score"], "listing_url": _listing_url(job),
-                "standard_fields": standard}
+                "standard_fields": standard, "people": job["people"], "network_mode": job["network_mode"],
+                "tailored": tailored}
         if not live:
             path = write_dry_run_file(folder, n, job, d, meta)
             conn.execute("INSERT OR IGNORE INTO dry_run_drafts (job_key, run_id, outreach_type, payload, file_path, "
                          "created_at) VALUES (?,?,?,?,?,?)",
-                         (key, run_id, job["outreach_type"], json.dumps({**d.model_dump(), **meta}), str(path),
-                          repo.iso(now)))
+                         (key, run_id, job["outreach_type"], json.dumps({**d.model_dump(), **meta}, default=str),
+                          str(path), repo.iso(now)))
             out["created"].append({"item": job, "file": str(path)})
-            out["drafts_created" if job["route"] == "email" else "kits_created"] += 1
+            out[counter[job["route"]]] += 1
             continue
+        linked = "email draft"
         if job["route"] == "email":
             status = gmail_drafts.create_email_draft(
                 conn, google["gmail"], job=job, draft=d, resume_key=job["resume_key"],
                 resume_path=job["resume_path"], pitch_variant=job["pitch_variant"], cfg=cfg, now=now)
             out["created"].append({"item": job, "status": status})
             out["drafts_created"] += status == "drafted"
-        else:
+            if status != "drafted":
+                continue
+        elif job["route"] == "portal":
             app_id = repo.create_application(conn, job_key=key, outreach_type="application_brief",
                                              bucket=job["bucket"], resume_key=job["resume_key"], now=now,
                                              resume_pdf_path=job["resume_path"])
@@ -194,6 +297,21 @@ def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetim
                 "__KIT__"), now)
             out["created"].append({"item": job, "status": "pending"})
             out["kits_created"] += 1
+            linked = "Applications tab"
+        else:
+            linked = "LinkedIn pitch"
+        if d.network:
+            created_any = False
+            for i, person in enumerate(job["people"]):
+                note = d.network.connection_note if i == 0 else None   # one note per job (budget)
+                nid = repo.create_network_entry(conn, job_key=key, person_id=person["id"], connection_note=note,
+                                                now=now, after_accept_message=d.network.after_accept_message)
+                created_any = created_any or bool(nid)
+            if created_any:
+                _network_sheet_rows(conn, job, now, linked)
+                if job["route"] == "network":
+                    out["created"].append({"item": job, "status": "to_connect"})
+                    out["pitches_created"] += 1
     if live and google and google.get("sheets"):
         out["sheet"] = st.flush_queue(conn, google["sheets"], google["sheet_id"], now)
         if out["sheet"].get("error"):

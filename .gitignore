@@ -236,3 +236,6 @@ logs/
 reports/
 sandbox_empty_dir/
 .pytest_cache/
+
+# local tool binaries
+tools/

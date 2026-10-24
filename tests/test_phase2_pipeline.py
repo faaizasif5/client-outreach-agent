@@ -154,3 +154,75 @@ def test_drafting_failure_marks_run_failed(env):
             return super().__call__(prompt, model, schema, retries, timeout, **kw)
     result = run(env, DraftDown())
     assert result["status"] == "failed" and any(e.startswith("drafting failed") for e in result["errors"])
+
+
+# ---------------------------------------------------------------- Network tab (Phase 3)
+
+def stretch_with_founder_link(conn, cfg, profile):
+    """A US-auth stretch job with only a portal link and a founder LinkedIn link in the listing."""
+    from fetchers.models import RawJob
+    raw = RawJob(source="hn", external_id="5555", url="https://news.ycombinator.com/item?id=5555",
+                 company="Tinyco", title="Backend Engineer", location_text="Tinyco | Backend Engineer | Remote (US)",
+                 description="Tinyco | Backend Engineer | Remote (US)\nMust be authorized to work in the US. "
+                             "Team of 6. Django and Postgres.\nApply: https://jobs.ashbyhq.com/tinyco/"
+                             "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                 links=["https://jobs.ashbyhq.com/tinyco/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                        "https://www.linkedin.com/in/sam-tinyco"],
+                 posted_at=NOW - timedelta(days=1))
+    return main.process_raw(conn, raw, cfg, profile, NOW, None)
+
+
+def test_stretch_portal_with_founder_link_becomes_linkedin_pitch(env):
+    conn, cfg, profile, reports = env
+    key = stretch_with_founder_link(conn, cfg, profile)
+    row = conn.execute("SELECT * FROM jobs WHERE job_key=?", (key,)).fetchone()
+    assert (row["eligibility"], row["bucket"], row["route"]) == ("stretch", "us_auth_stretch", "network")
+    google = live_google()
+    claude = FakeClaude()
+    result = run(env, claude, live=True, google=google)
+    assert result["outreach"]["pitches_created"] == 1
+    assert "network: pitch" in claude.draft_prompts[0]
+    net = conn.execute("SELECT * FROM network WHERE job_key=?", (key,)).fetchone()
+    assert net["status"] == "to_connect" and "Pakistan" in net["connection_note"] and len(net["connection_note"]) <= 200
+    assert conn.execute("SELECT COUNT(*) FROM applications WHERE job_key=?", (key,)).fetchone()[0] == 0  # no portal kit
+    sheet_row = next(r for r in google["sheets"].tabs[st.NETWORK] if r[0] == net["id"])
+    assert sheet_row[st.NET_COL["Verified"]] == "check" and sheet_row[st.NET_COL["Status"]] == "to_connect"
+
+
+def test_network_status_sync_and_contact(env):
+    conn, cfg, profile, reports = env
+    key = stretch_with_founder_link(conn, cfg, profile)
+    google = live_google()
+    run(env, FakeClaude(), live=True, google=google)
+    net = conn.execute("SELECT * FROM network WHERE job_key=?", (key,)).fetchone()
+    sheet_row = next(r for r in google["sheets"].tabs[st.NETWORK] if r[0] == net["id"])
+    sheet_row[st.NET_COL["Status"]] = "connected"            # I jump straight to connected
+    sheet_row[st.NET_COL["Notes"]] = "accepted fast"
+    out = st.sync_network(conn, google["sheets"], "sid", NOW)
+    assert out["connected"] == 1
+    net = conn.execute("SELECT * FROM network WHERE job_key=?", (key,)).fetchone()
+    assert (net["status"], net["notes"]) == ("connected", "accepted fast")
+    from db import repo
+    assert repo.is_company_contacted(conn, "tinyco", None)   # note was sent -> one outreach per company
+
+
+def test_note_budget_exhausted_means_no_pitch(env):
+    conn, cfg, profile, reports = env
+    cfg["linkedin_notes_per_month"] = 0
+    key = stretch_with_founder_link(conn, cfg, profile)
+    result = run(env, FakeClaude(), live=True, google=live_google())
+    assert result["outreach"]["pitches_created"] == 0
+    assert any(i["job_key"] == key for i in result["outreach"]["network_waiting"])
+
+
+def test_emailed_jobs_get_no_connection_note(env):
+    conn, cfg, profile, reports = env
+    from pipeline import people as people_mod
+    # Give Rocketship (emailed stretch job in the fixtures) a known founder.
+    people_mod.save_people(conn, "rocketship", [{"name": "Sam Founder", "title": "CEO",
+                                                 "linkedin_url": "https://linkedin.com/in/sam", "source": "team_page",
+                                                 "verified": 1}], NOW)
+    run(env, FakeClaude(), live=True, google=live_google())
+    rows = conn.execute("SELECT n.* FROM network n JOIN jobs j ON j.job_key=n.job_key "
+                        "WHERE j.company_norm='rocketship'").fetchall()
+    assert rows and all(r["connection_note"] is None and r["after_accept_message"] for r in rows)

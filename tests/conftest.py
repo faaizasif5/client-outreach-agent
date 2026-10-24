@@ -41,3 +41,22 @@ def make_job(conn, job_key="src:hn:1", company="Acme", company_norm="acme",
     row.update(extra)
     repo.insert_job(conn, row)
     return row
+
+
+@pytest.fixture(autouse=True)
+def isolated_resume_templates(tmp_path, monkeypatch):
+    """Never read the real candidate/latex templates or bullet bank in tests."""
+    from pipeline import resume_builder
+    monkeypatch.setattr(resume_builder, "LATEX_DIR", tmp_path / "no_latex")
+    monkeypatch.setattr(resume_builder, "BULLETS", tmp_path / "no_bullets.yaml")
+
+
+@pytest.fixture(autouse=True)
+def never_call_real_claude(monkeypatch):
+    """Any test that reaches the real `claude` subprocess fails (tests that check the wrapper
+    replace claude_cli._run themselves)."""
+    from pipeline import claude_cli
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("tests must never run the real Claude CLI")
+    monkeypatch.setattr(claude_cli, "_run", refuse)

@@ -152,3 +152,41 @@ def test_draft_jobs_claude_failure(profile, cfg):
         raise ClaudeError("down")
     out = drafter.draft_jobs([job()], profile, cfg, claude=boom)
     assert out["error"] and out["missing"] == ["k1"] and not out["accepted"]
+
+
+# ---------------------------------------------------------------- Network tab notes (Phase 3)
+
+def test_network_pitch_note_rules(profile, cfg):
+    j = job(outreach_type="network_pitch", bucket="us_auth_stretch", network_mode="pitch")
+    note = "Hi Sara, saw the backend role at Acme. I'm a full-stack engineer in Pakistan who's worked US hours. Open to a contractor alternative?"
+    ok = Draft(job_key="k1", outreach_type="network_pitch", network={"connection_note": note,
+                                                                      "after_accept_message": "Thanks for connecting!"})
+    assert problems(ok, j, profile, cfg) == []
+    no_pk = Draft(job_key="k1", outreach_type="network_pitch",
+                  network={"connection_note": "Hi Sara, open to a contractor?", "after_accept_message": "Thanks"})
+    assert any("Pakistan" in p for p in problems(no_pk, j, profile, cfg))
+    missing = Draft(job_key="k1", outreach_type="network_pitch")
+    assert any("without a connection note" in p for p in problems(missing, j, profile, cfg))
+
+
+def test_connection_note_over_200_chars_rejected():
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        Draft(job_key="k1", outreach_type="network_pitch",
+              network={"connection_note": "x" * 201, "after_accept_message": "hi"})
+
+
+def test_no_note_for_emailed_jobs_or_when_budget_spent(profile, cfg):
+    d = draft()
+    d.network = {"connection_note": "Hi, I just emailed you", "after_accept_message": "Thanks for connecting"}
+    d = Draft.model_validate(d.model_dump())
+    assert problems(d, job(network_mode="after_accept_only"), profile, cfg) == []
+    assert d.network.connection_note is None and d.network.after_accept_message
+
+
+def test_network_text_goes_through_the_same_guards(profile, cfg):
+    d = Draft(job_key="k1", outreach_type="application_brief", kit={"cover_note": "Hello", "form_answers": []},
+              network={"connection_note": "Just applied! I'm authorized to work in the US.",
+                       "after_accept_message": "Thanks"})
+    j = job(outreach_type="application_brief", network_mode="note")
+    assert any("US work authorization" in p for p in problems(d, j, profile, cfg))

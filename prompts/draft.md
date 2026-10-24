@@ -43,10 +43,31 @@ application_brief (outreach_type "application_brief"): leave subject null and bo
   you're proud of." Never answer work-authorization, visa or sponsorship questions (code
   fills those).
 
+network (LinkedIn, the candidate sends every request by hand). Follow the "network:" line of
+each job exactly:
+- "none": set network to null.
+- "after_accept_only": connection_note null; after_accept_message 2-4 lines to send once they
+  accept (they were already emailed, so no pitch, just a friendly hello and the role).
+- "note": connection_note (max 200 characters) that mentions the application ("just applied for
+  the backend role...") plus one specific, true detail from the listing; after_accept_message 2-4
+  lines.
+- "pitch" (outreach_type "network_pitch", subject null, body ""): connection_note is the whole
+  pitch, max 200 characters: the role, based in Pakistan, worked US hours with a US client team,
+  open to a contractor alternative. after_accept_message 2-4 lines following the stretch order.
+Address the person by first name. Never invent facts about the person or company.
+
+tailored resume (only when the job says "tailor: yes"; otherwise set "tailored" to null):
+- "tailored": {{"resume_key": <the job's resume>, "summary": max 3 sentences using only candidate
+  facts and skills, "bullet_ids": ordered IDs from the BULLET BANK for that resume (most relevant
+  first; pick per section, never invent IDs), "skills_first": up to 8 skills from the candidate's
+  skill lists that matter most for this listing}}.
+- No numbers, companies or technologies in the summary that are not in the candidate section.
+
 Output: ONLY a JSON object, no prose, no code fences:
 {{"results": [{{"job_key": "...", "outreach_type": "direct_email|application_brief",
 "subject": "..." or null, "body": "...", "kit": null or {{"cover_note": "...",
-"form_answers": [{{"question": "...", "answer": "..."}}]}}, "network": null}}]}}
+"form_answers": [{{"question": "...", "answer": "..."}}]}}, "network": null or
+{{"connection_note": "..." or null, "after_accept_message": "..."}}}}]}}
 Return exactly one result per job below, with the outreach_type given for that job.
 
 CANDIDATE

@@ -134,6 +134,13 @@ def kit_row(job: dict, kit: dict, standard: str) -> list:
     return [job["job_key"], job["company"], job.get("apply_url") or "", kit["cover_note"], answers, standard]
 
 
+def network_row(row: dict, job: dict, linked: str) -> list:
+    return [row["id"], safe(job["company"]), linked, safe(row["name"]), safe(row.get("title")),
+            hyperlink(row.get("linkedin_url"), "search" if row.get("source") == "search" else "profile"),
+            row.get("source"), "yes" if row.get("verified") else "check", safe(row.get("connection_note") or ""),
+            safe(row.get("after_accept_message")), row["status"], ""]
+
+
 def enqueue(conn, tab: str, job_key: str, row: list, now: datetime) -> None:
     conn.execute("INSERT OR IGNORE INTO sheet_queue (tab, job_key, row, created_at) VALUES (?,?,?,?)",
                  (tab, job_key, json.dumps(row), repo.iso(now)))
@@ -211,6 +218,34 @@ def sync_from_sheet(conn, api: SheetsApi, sid: str, now: datetime) -> dict:
                 else:
                     conn.execute("UPDATE applications SET outcome=? WHERE id=?", (outcome, app["id"]))
                 out["outcomes"] += 1
+    return out
+
+
+NET_COL = {name: i for i, name in enumerate(HEADERS[NETWORK])}
+NETWORK_PATH = {"requested": ["requested"], "connected": ["requested", "connected"], "skipped": ["skipped"]}
+
+
+def sync_network(conn, api: SheetsApi, sid: str, now: datetime) -> dict:
+    """Copy Network Status / Notes into SQLite. requested + note marks the company contacted."""
+    out = {"requested": 0, "connected": 0, "skipped": 0, "unknown": []}
+    for row in api.read(sid, NETWORK)[1:]:
+        row = row + [""] * (len(HEADERS[NETWORK]) - len(row))
+        nid, status, notes = row[0], row[NET_COL["Status"]].strip().lower(), row[NET_COL["Notes"]]
+        current = conn.execute("SELECT * FROM network WHERE id=?", (nid,)).fetchone()
+        if not current:
+            continue
+        if notes != (current["notes"] or ""):
+            conn.execute("UPDATE network SET notes=? WHERE id=?", (notes, nid))
+        if not status or status == current["status"]:
+            continue
+        if status not in NETWORK_STATUS:
+            out["unknown"].append(f"{nid}: Status '{row[NET_COL['Status']]}'")
+            continue
+        for step in NETWORK_PATH.get(status, []):
+            now_status = conn.execute("SELECT status FROM network WHERE id=?", (nid,)).fetchone()[0]
+            if step in repo.NETWORK_TRANSITIONS.get(now_status, set()):
+                repo.transition_network(conn, nid, step, now, source="sheet")
+        out[status] = out.get(status, 0) + 1
     return out
 
 

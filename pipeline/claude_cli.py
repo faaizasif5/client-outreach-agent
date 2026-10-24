@@ -19,6 +19,9 @@ ENVELOPE_FIELDS = ("usage", "duration_ms", "duration_api_ms", "total_cost_usd", 
                    "modelUsage", "is_error")
 
 
+_run = subprocess.run   # the one place the real CLI is started (tests replace it)
+
+
 class ClaudeError(Exception):
     pass
 
@@ -60,7 +63,7 @@ def run_claude(prompt: str, model: str, schema: type[BaseModel],
     attempts = []
     for attempt in range(retries + 1):
         try:
-            proc = subprocess.run(build_command(model, effort), input=prompt, capture_output=True,
+            proc = _run(build_command(model, effort), input=prompt, capture_output=True,
                                   text=True, encoding="utf-8", timeout=timeout, cwd=SANDBOX,
                                   env=_child_env())
             if proc.returncode != 0:

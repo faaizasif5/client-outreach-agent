@@ -12,8 +12,11 @@ order: Phase 2 code before Phase 1 exit criteria, but nothing reaches Google unt
 is done). `outreach.live_enabled: false` in `config.yaml` keeps every run in dry-run: drafts and
 kits go to `reports/dry-run/<date>/` and the `dry_run_drafts` table, never `applications`, so dry
 runs never block a company. Flip it only with the user's explicit approval.
-Phase 3: YC scraper waits for the user to check YC's terms; Network tab, tailored resumes,
-weekly stats, stale-draft cleanup not built yet. Ask before installing Playwright or Tectonic.
+Phase 3 is built (approved): stale-draft cleanup, no_response, Monday weekly stats, Network tab
+(YC founders, team pages, signed posts; linkedin.com never fetched), YC scraper (Playwright, rules in
+`config/yc_selectors.yaml`, health checks, snapshots, weekly auto-repair, auto-disable after 14
+broken days), tailored resumes (Tectonic in `tools/tectonic/`, templates + `candidate/bullets.yaml`
+built from the user's .tex files with `resume_builder.build_templates`).
 
 ## Hard rules (spec section 2)
 - Based in Karachi: nothing proceeds unless the deterministic eligibility gate allows it.

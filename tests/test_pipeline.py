@@ -32,6 +32,7 @@ class FakeClaude:
     def __init__(self, fit=85):
         self.calls, self.prompts, self.fit = 0, [], fit
         self.draft_calls, self.draft_prompts = 0, []
+        self.tailor_summary = "Full-stack engineer with 3+ years building Vue.js and Django apps."
 
     def __call__(self, prompt, model, schema, retries, timeout, **kw):
         self.kwargs = kw
@@ -45,13 +46,30 @@ class FakeClaude:
                 key = re.search(r'job_key="([^"]+)"', block).group(1)
                 otype = re.search(r"outreach_type: (\w+)", block).group(1)
                 bucket = re.search(r"bucket: (\w+)", block).group(1)
-                if otype == "direct_email":
+                mode = re.search(r"network: (\w+)", block).group(1)
+                tailored = None
+                if "tailor: yes" in block:
+                    rkey = re.search(r"resume: (\w+)", block).group(1)
+                    ids = re.findall(r"^  ([\w-]+) \[", prompt, re.M)
+                    tailored = {"resume_key": rkey, "summary": self.tailor_summary,
+                                "bullet_ids": ids[::-1][:3], "skills_first": ["Django"]}
+                network = None if mode == "none" else {
+                    "connection_note": ("Hi Sam, saw the backend role. I'm a full-stack engineer in Pakistan "
+                                        "who has worked US hours. Open to a contractor alternative?")
+                    if mode in ("note", "pitch") else None,
+                    "after_accept_message": "Thanks for connecting! Happy to share more about my Django work."}
+                if otype == "network_pitch":
+                    results.append({"job_key": key, "outreach_type": otype, "subject": None, "body": "",
+                                    "network": network})
+                elif otype == "direct_email":
                     results.append({"job_key": key, "outreach_type": otype, "subject": "Backend role",
-                                    "body": EMAIL_BODY if bucket == "eligible" else STRETCH_BODY})
+                                    "body": EMAIL_BODY if bucket == "eligible" else STRETCH_BODY,
+                                    "network": network, "tailored": tailored})
                 else:
                     results.append({"job_key": key, "outreach_type": otype, "subject": None, "body": "",
                                     "kit": {"cover_note": "I build Django APIs.", "form_answers": [
-                                        {"question": "Why us?", "answer": "The product fits my Django work."}]}})
+                                        {"question": "Why us?", "answer": "The product fits my Django work."}]},
+                                    "network": network, "tailored": tailored})
             return schema.model_validate({"results": results}), usage
         self.calls += 1
         self.prompts.append(prompt)

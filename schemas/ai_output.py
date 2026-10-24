@@ -55,6 +55,7 @@ class ScoreBatch(BaseModel):
 class OutreachType(str, Enum):
     direct_email = "direct_email"
     application_brief = "application_brief"
+    network_pitch = "network_pitch"      # stretch job, no email, founder LinkedIn known: the note is the pitch
 
 
 class FormAnswer(BaseModel):
@@ -79,6 +80,7 @@ class Draft(BaseModel):
     body: str = Field(default="", max_length=2000)
     kit: Kit | None = None
     network: NetworkNote | None = None
+    tailored: "TailoredResume | None" = None
 
 
 class DraftBatch(BaseModel):
@@ -91,3 +93,12 @@ class DraftBatch(BaseModel):
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate job_key")
         return v
+
+
+class TailoredResume(BaseModel):
+    """Spec 11a: Claude picks, code renders. Never free-form LaTeX."""
+    resume_key: ResumeKey
+    summary: str = Field(min_length=1, max_length=600)          # max 3 sentences (checked in code)
+    bullet_ids: list[str] = Field(min_length=1, max_length=20)  # ordered, from the bullet bank
+    skills_first: list[str] = Field(default_factory=list, max_length=8)
+Draft.model_rebuild()

@@ -110,7 +110,12 @@ def outreach_section(stage: dict | None, live: bool) -> list[str]:
     for i, why in stage.get("unknown", []):
         out.append(f"- liveness unknown, retry next run: {_cell(i['company'])}, {_cell(i['title'])} ({why})")
     for i in stage.get("network_waiting", []):
-        out.append(f"- LinkedIn pitch (Network tab, Phase 3): {_cell(i['company'])}, {_cell(i['title'])}")
+        out.append(f"- LinkedIn pitch waiting (no founder found, or this month's note budget is used): "
+                   f"{_cell(i['company'])}, {_cell(i['title'])}")
+    for t in stage.get("tailored", []):
+        i = t["item"]
+        out.append(f"- tailored resume for {_cell(i['company'])}: " + (
+            t["pdf"] if t["status"] == "used" else f"rejected ({'; '.join(t['problems'])[:200]}), standard PDF used"))
     sync = stage.get("sync") or {}
     if sync:
         out.append(f"- sync: {json.dumps({k: v for k, v in sync.items()}, default=str)[:600]}")
@@ -139,6 +144,7 @@ def render(ctx: dict) -> str:
     if ctx.get("errors"):
         out += ["## Errors", ""] + [f"- {e}" for e in ctx["errors"]] + [""]
     out += outreach_section(ctx.get("outreach"), ctx.get("live"))
+    out += ctx.get("weekly") or []
 
     out += ["## Shortlist", "",
             "Ranked by band, then score. `queued` = over today's cap for that route; it waits while fresh.",

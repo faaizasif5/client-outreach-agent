@@ -243,7 +243,9 @@ def create_network_entry(conn, *, job_key: str, person_id: int, connection_note:
     """A network row with a note is outreach and goes through the same company check."""
     with transaction(conn):
         job = get_job(conn, job_key)
-        if connection_note and company_block_reason(conn, job["company_norm"], job["company_domain"]):
+        # The job's own email/kit doesn't block its LinkedIn note; another job's outreach does.
+        if connection_note and company_block_reason(conn, job["company_norm"], job["company_domain"],
+                                                    exclude_job_key=job_key):
             update_job(conn, job_key, {"status": "suppressed_company"})
             return None
         n = conn.execute("SELECT COUNT(*) FROM network WHERE job_key=?", (job_key,)).fetchone()[0]

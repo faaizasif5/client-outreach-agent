@@ -25,6 +25,8 @@ def compose(counts: dict) -> dict:
     if drafts or kits:
         parts.append(f"{_plural(drafts, 'draft')} ready + {_plural(kits, 'new portal job')} in the tracker. "
                      f"{_plural(review, 'job')} to review.")
+    if counts.get("yc_manual_fix"):
+        parts.append("YC scraper needs a manual fix.")
     if not parts:
         return {"title": "Job agent", "priority": "low", "tags": "zzz", "message": "No new matches today."}
     return {"title": "Job agent", "priority": "high" if replies else "default",

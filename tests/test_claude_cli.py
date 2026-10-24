@@ -1,4 +1,4 @@
-"""The real Claude CLI is never called: subprocess.run is replaced in every test."""
+"""The real Claude CLI is never called: claude_cli._run is replaced in every test."""
 import json
 import subprocess
 
@@ -34,7 +34,7 @@ class FakeRun:
 def fake(monkeypatch):
     def install(outputs):
         f = FakeRun(outputs)
-        monkeypatch.setattr(claude_cli.subprocess, "run", f)
+        monkeypatch.setattr(claude_cli, "_run", f)
         return f
     return install
 
@@ -77,7 +77,7 @@ def test_malformed_every_time_fails_cleanly(fake):
 def test_nonzero_exit_is_an_error(fake, monkeypatch):
     def run(cmd, **kw):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="Not logged in")
-    monkeypatch.setattr(claude_cli.subprocess, "run", run)
+    monkeypatch.setattr(claude_cli, "_run", run)
     with pytest.raises(claude_cli.ClaudeError, match="Not logged in"):
         claude_cli.run_claude("p", "haiku", ScoreBatch, retries=0, sleep=lambda s: None)
 
