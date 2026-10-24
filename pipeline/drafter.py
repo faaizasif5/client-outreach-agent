@@ -96,9 +96,14 @@ def _profile_text(profile: dict) -> str:
     return " ".join(parts)
 
 
+def _norm_link(value: str) -> str:
+    """Compare links without scheme, www. or trailing punctuation."""
+    return re.sub(r"^(https?://)?(www\.)?", "", value.lower()).rstrip("/.,)")
+
+
 def _own_links(profile: dict) -> set[str]:
     values = list((profile.get("links") or {}).values()) + [profile.get("answer_bank", {}).get("email", "")]
-    return {v.lower().rstrip("/") for v in values if v and v != "..."}
+    return {_norm_link(v) for v in values if v and v != "..."}
 
 
 def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
@@ -128,7 +133,7 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
     if bad_numbers:
         problems.append(f"numbers not in profile or listing: {bad_numbers}")
     own = _own_links(profile)
-    foreign = [u for u in URL_OR_EMAIL.findall(text) if u.lower().rstrip("/.,)") not in own]
+    foreign = [u for u in URL_OR_EMAIL.findall(text) if _norm_link(u) not in own]
     if foreign:
         problems.append(f"links/emails not from profile: {foreign}")
     for m in US_AUTH_CLAIM.finditer(text):

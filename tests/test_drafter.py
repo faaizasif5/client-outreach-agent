@@ -91,6 +91,11 @@ def test_own_links_allowed(profile, cfg):
     assert problems(d, job(), profile, cfg) == []
 
 
+def test_own_links_match_without_scheme_or_www(profile, cfg):
+    d = draft(GOOD_BODY.replace("Alex Example", "Alex Example\nwww.github.com/example/"))
+    assert problems(d, job(), profile, cfg) == []
+
+
 def test_outreach_type_mismatch_and_stretch_kit_rejected(profile, cfg):
     kit = {"cover_note": "Hello", "form_answers": []}
     d = Draft(job_key="k1", outreach_type="application_brief", kit=kit)
