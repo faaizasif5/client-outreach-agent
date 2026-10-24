@@ -30,7 +30,7 @@ from pipeline.claude_cli import build_command, run_claude
 
 ROOT = Path(__file__).resolve().parent
 PKT = timezone(timedelta(hours=5))   # Asia/Karachi has no DST; avoids a tzdata dependency on Windows
-log = logging.getLogger("job_agent")
+log = logging.getLogger("outreach_agent")
 
 
 def load_config(root: Path = ROOT) -> dict:
@@ -394,7 +394,7 @@ def scheduler_command(words: list) -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Job outreach agent")
+    parser = argparse.ArgumentParser(description="Client outreach agent")
     parser.add_argument("command", nargs="?", default="run",
                         choices=["run", "label", "setup-google", "yc-login", "scheduler"])
     parser.add_argument("files", nargs="*", help="label: report files (default reports/*.md); "

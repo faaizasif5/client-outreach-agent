@@ -1,4 +1,4 @@
-# job-outreach-agent
+# client-outreach-agent
 
 A personal tool that finds fresh, remote-friendly software jobs, keeps only the ones I can really
 apply to from Pakistan, and prepares the outreach for me to review and send myself.

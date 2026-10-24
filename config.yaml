@@ -1,4 +1,4 @@
-# Job Outreach Agent configuration (spec sections 2, 8, 9, 10, 19).
+# Client Outreach Agent configuration (spec sections 2, 8, 9, 10, 19).
 # Regexes are Python `re` syntax, matched case-insensitively unless they use (?-i:...).
 # YAML single-quoted strings: backslashes are literal, '' is a single quote.
 
@@ -50,7 +50,7 @@ sources:
       - https://weworkremotely.com/categories/remote-front-end-programming-jobs.rss
 
 http:
-  user_agent: 'job-outreach-agent/0.1 (personal job search; polite, cached)'
+  user_agent: 'client-outreach-agent/0.1 (personal job search; polite, cached)'
   min_delay_seconds: 2.0
   max_delay_seconds: 3.0
   cache_ttl_hours: 6

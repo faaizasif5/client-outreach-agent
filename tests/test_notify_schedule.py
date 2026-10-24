@@ -107,7 +107,7 @@ class FakeSchtasks:
         if args[0] == "/Change":
             self.status = "Ready" if "/ENABLE" in args else "Disabled"
             return subprocess.CompletedProcess(args, 0, "SUCCESS", "")
-        return subprocess.CompletedProcess(args, 0, f'"\\JobOutreachAgent","N/A","{self.status}"\n', "")
+        return subprocess.CompletedProcess(args, 0, f'"\\ClientOutreachAgent","N/A","{self.status}"\n', "")
 
 
 def test_scheduler_off_and_on(monkeypatch, capsys):
@@ -115,12 +115,12 @@ def test_scheduler_off_and_on(monkeypatch, capsys):
     fake = FakeSchtasks()
     monkeypatch.setattr(schedule, "_schtasks", fake)
     assert main.main(["scheduler", "off"]) == 0
-    assert "JobOutreachAgent: Disabled" in capsys.readouterr().out
-    assert ("/Change", "/TN", "JobOutreachAgent", "/DISABLE") in fake.calls
+    assert "ClientOutreachAgent: Disabled" in capsys.readouterr().out
+    assert ("/Change", "/TN", "ClientOutreachAgent", "/DISABLE") in fake.calls
     assert main.main(["scheduler"]) == 0                      # status is the default
     assert "Disabled" in capsys.readouterr().out
     assert main.main(["scheduler", "on"]) == 0
-    assert "JobOutreachAgent: Ready" in capsys.readouterr().out
+    assert "ClientOutreachAgent: Ready" in capsys.readouterr().out
 
 
 def test_scheduler_not_installed_and_bad_action(monkeypatch, capsys):

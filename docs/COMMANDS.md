@@ -13,7 +13,7 @@ Run from the repo root in PowerShell or cmd.
 | `.venv\Scripts\python main.py --rescore` | Re-score already scored fresh jobs (uses a Claude call). |
 | `.venv\Scripts\python main.py label` | Read your labels from `reports/*.md` and print calibration. |
 
-## Daily scheduler (Windows task `JobOutreachAgent`)
+## Daily scheduler (Windows task `ClientOutreachAgent`)
 
 | Command | What it does |
 |---|---|
@@ -22,7 +22,7 @@ Run from the repo root in PowerShell or cmd.
 | `.venv\Scripts\python main.py scheduler on` | Resume it. |
 | `powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1 -Live` | Register (or re-register) the task in live mode. |
 | `powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1` | Register it in dry-run mode. |
-| `schtasks /Delete /TN JobOutreachAgent /F` | Remove the task completely. |
+| `schtasks /Delete /TN ClientOutreachAgent /F` | Remove the task completely. |
 
 The task fires on logon, unlock, wake and hourly; the once-per-day guard decides whether it runs.
 Logs: `logs/<date>.log`.

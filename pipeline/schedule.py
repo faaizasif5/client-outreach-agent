@@ -58,7 +58,7 @@ def run_lock(path: Path, stale_minutes: int):
         path.unlink(missing_ok=True)
 
 
-TASK_NAME = "JobOutreachAgent"   # registered by scripts/install_task.ps1
+TASK_NAME = "ClientOutreachAgent"   # registered by scripts/install_task.ps1
 
 
 def _schtasks(*args: str) -> subprocess.CompletedProcess:

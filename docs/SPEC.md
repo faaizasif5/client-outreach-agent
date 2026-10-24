@@ -1,4 +1,4 @@
-# Job Outreach Agent — Build Spec
+# Client Outreach Agent — Build Spec
 
 ## How to Use This Spec (for Claude Code)
 - Build in the phase order in section 20. Finish Phase 1 and meet its exit criteria before starting Phase 2.

@@ -219,7 +219,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# --- job outreach agent: private data (repo must stay PRIVATE) ---
+# --- client outreach agent: private data (repo must stay PRIVATE) ---
 .env
 credentials.json
 token*.json

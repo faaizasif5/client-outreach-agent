@@ -1,4 +1,4 @@
-# Job Outreach Agent: notes for Claude Code
+# Client Outreach Agent: notes for Claude Code
 
 Personal tool. `docs/SPEC.md` is the source of truth (section 0 lists every change from the
 original plan); if something here or in your own ideas conflicts with it, follow the spec and flag
@@ -10,7 +10,7 @@ PRIVATE (the spec contains a real profile). Never commit `.env`, `credentials.js
 ## Current state
 All three phases are built. **Live mode is on** (`outreach.live_enabled: true`, approved after a
 supervised first live run): Gmail drafts, the tracker sheet and ntfy are real. Phase 1 calibration
-labeling continues. The Windows scheduled task `JobOutreachAgent` runs `main.py` live (registered
+labeling continues. The Windows scheduled task `ClientOutreachAgent` runs `main.py` live (registered
 with `scripts/install_task.ps1 -Live`, approved 2026-10-25). `main.py scheduler off | on | status`
 disables/enables that task via `schtasks` (tests mock `schedule._schtasks`).
 
