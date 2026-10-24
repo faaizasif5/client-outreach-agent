@@ -4,6 +4,7 @@
     python main.py                    live: Gmail drafts + tracker sheet (needs outreach.live_enabled)
     python main.py label [files...]   read labels back from reports and print calibration
     python main.py setup-google       one-time OAuth + create the tracker sheet + upload resumes
+    python main.py scheduler off      pause the daily Windows task (on | off | status)
 """
 import argparse
 import json
@@ -57,6 +58,9 @@ def process_raw(conn, raw: RawJob, cfg: dict, profile: dict, now: datetime, http
                 newest_first_since: datetime | None = None) -> str:
     domain = _company_domain(raw)
     explicit_apply = raw.apply_url if raw.source != "hn" else None
+    if raw.source == "wwr":   # WWR's own apply button is gated: prefer the company's link in the listing
+        direct = next((l for l in raw.links if contacts_mod.is_apply_url(l) and "weworkremotely.com" not in l), None)
+        explicit_apply = direct or explicit_apply
     contacts = contacts_mod.extract_contacts(raw.description, raw.links, source=raw.source,
                                              company_domain=domain, explicit_apply_url=explicit_apply)
     if not domain and contacts.recruiting_email:
@@ -103,7 +107,7 @@ def process_raw(conn, raw: RawJob, cfg: dict, profile: dict, now: datetime, http
         updates.update(posted_at=repo.iso(age.posted_at), posted_at_source=age.source)
     if closed:
         updates["lifecycle"] = "closed"
-    if row["eligibility_reason"] != "hidden_location_restriction":   # set by scoring; sticky
+    if row["eligibility_reason"] not in ("hidden_location_restriction", "gated_apply_link"):   # sticky
         updates.update(eligibility=result.eligibility, eligibility_reason=result.reason,
                        bucket=result.bucket, route=result.route)
     if row["status"] == "new" and not keyword_match.is_engineering_role(row["title"], cfg):
@@ -233,9 +237,11 @@ def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dic
     todays = [i for i in items if i["decision"] in ("shortlisted", "queued") or
               repo.parse_iso(i["evaluated_at"]).astimezone(PKT).date().isoformat() == today]
     seen_now = conn.execute("SELECT * FROM jobs WHERE last_seen_at = ?", (repo.iso(now),)).fetchall()
+    # Only engineering roles are worth a manual look; newest first.
     uncertain = [{"company": r["company"], "title": r["title"], "reason": r["eligibility_reason"],
-                  "location_text": r["location_text"], "sources": r["sources"]}
-                 for r in seen_now if r["eligibility"] == "uncertain"]
+                  "location_text": r["location_text"], "sources": r["sources"], "posted_at": r["posted_at"]}
+                 for r in sorted(seen_now, key=lambda r: r["posted_at"] or "", reverse=True)
+                 if r["eligibility"] == "uncertain" and keyword_match.is_engineering_role(r["title"], cfg)]
     uncertain += [{"company": i["company"], "title": i["title"], "reason": "low_confidence_score",
                    "location_text": i["location_text"], "sources": i["sources"]}
                   for i in todays if i["decision"] == "low_confidence"]
@@ -262,15 +268,17 @@ def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dic
     from outputs import stats
     weekly = stats.weekly(conn, now, cfg) if stats.is_stats_day(now, cfg) else []
     existing = {r["job_key"]: r["label"] for r in conn.execute("SELECT job_key, label FROM labels")}
-    report = digest.write_report(report_dir / f"{today}.md", {
+    report_ctx = {
         "date": today, "run_id": run_id, "counts": dict(counts), "usage": usage, "errors": errors,
         "items": todays, "uncertain": uncertain, "ineligible_counts": ineligible,
-        "existing_labels": existing, "outreach": stage, "live": live, "notes": notes, "weekly": weekly})
+        "existing_labels": existing, "outreach": stage, "live": live, "notes": notes, "weekly": weekly}
+    report = digest.write_report(report_dir / f"{today}.md", report_ctx)            # full: labels, debugging
+    digest_file = digest.write_digest(report_dir / f"{today}-digest.md", report_ctx)  # short: what needs you
     conn.execute("UPDATE runs SET finished_at=?, status=?, counts=?, usage=?, errors=? WHERE run_id=?",
                  (repo.iso(datetime.now(timezone.utc)), status, json.dumps(dict(counts)),
                   json.dumps(usage, default=str), json.dumps(errors), run_id))
     return {"run_id": run_id, "status": status, "counts": dict(counts), "usage": usage,
-            "errors": errors, "report": report, "outreach": stage}
+            "errors": errors, "report": report, "digest": digest_file, "digest_ctx": report_ctx, "outreach": stage}
 
 
 # ---------------------------------------------------------------- label command
@@ -321,6 +329,12 @@ def google_context(conn, profile: dict, interactive: bool = False) -> dict:
         conn.execute("DELETE FROM sheet_queue")
         for tab, job_key, row in st.rebuild_rows(conn, links):
             st.enqueue(conn, tab, job_key, row, datetime.now(timezone.utc))
+    else:
+        try:   # widths, wrapping, 1-row freeze: one cheap call, keeps the sheet readable
+            api.ensure_tab(ctx["sheet_id"], st.ARCHIVE)
+            api.apply_layout(ctx["sheet_id"])
+        except Exception as e:
+            ctx["notes"].append(f"Sheet layout not applied: {type(e).__name__}")
     return ctx
 
 
@@ -343,26 +357,48 @@ def setup_google(conn, profile: dict) -> str:
             f"(id saved to .env). Resumes uploaded: {uploaded or 'already uploaded'}.")
 
 
-def send_digest_draft(conn, gmail, run_id: str, report: Path, now: datetime) -> None:
-    """Daily digest as a Gmail draft to myself; an earlier digest draft from today is replaced."""
+def send_digest(conn, gmail, run_id: str, ctx: dict, now: datetime, delivery: str = "send") -> None:
+    """Daily digest to yourself as an HTML email (plain-text fallback). delivery 'draft' keeps the
+    spec's original behaviour: a draft that replaces today's earlier digest draft."""
     from outputs.gmail_client import build_mime
+    subject = f"Job digest {now.astimezone(PKT):%Y-%m-%d}"
+    msg = build_mime(sender=gmail.address, to=gmail.address, subject=subject, body=digest.render_digest(ctx),
+                     html=digest.render_digest_html(ctx), job_key=f"digest:{run_id}")
+    if delivery == "send":
+        message_id = gmail.send(msg)
+        conn.execute("UPDATE runs SET digest_draft_id=? WHERE run_id=?", (f"sent:{message_id}", run_id))
+        return
     for r in schedule.runs_today(conn, now):
         old = conn.execute("SELECT digest_draft_id FROM runs WHERE run_id=?", (r["run_id"],)).fetchone()[0]
-        if old:
+        if old and not old.startswith("sent:"):
             gmail.delete_draft(old)
             conn.execute("UPDATE runs SET digest_draft_id=NULL WHERE run_id=?", (r["run_id"],))
-    msg = build_mime(sender=gmail.address, to=gmail.address, subject=f"Job digest {now.astimezone(PKT):%Y-%m-%d}",
-                     body=report.read_text(encoding="utf-8"), job_key=f"digest:{run_id}")
     draft_id, _ = gmail.create_draft(msg)
     conn.execute("UPDATE runs SET digest_draft_id=? WHERE run_id=?", (draft_id, run_id))
 
 
 # ---------------------------------------------------------------- CLI
 
+def scheduler_command(words: list) -> int:
+    action = words[0] if words else "status"
+    if action not in ("on", "off", "status"):
+        print("usage: main.py scheduler on | off | status")
+        return 2
+    try:
+        status = schedule.task_status() if action == "status" else schedule.set_task_enabled(action == "on")
+    except RuntimeError as e:
+        print(e)
+        return 1
+    print(f"{schedule.TASK_NAME}: {status}")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Job outreach agent")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "label", "setup-google", "yc-login"])
-    parser.add_argument("files", nargs="*", type=Path, help="label: report files (default reports/*.md)")
+    parser.add_argument("command", nargs="?", default="run",
+                        choices=["run", "label", "setup-google", "yc-login", "scheduler"])
+    parser.add_argument("files", nargs="*", help="label: report files (default reports/*.md); "
+                                                 "scheduler: on | off | status")
     parser.add_argument("--dry-run", action="store_true", help="drafts/kits to reports/dry-run/, no Google calls")
     parser.add_argument("--force", action="store_true", help="bypass the once-per-day guard")
     parser.add_argument("--sources", default="hn,remoteok,wwr,yc")
@@ -370,6 +406,8 @@ def main(argv=None) -> int:
     parser.add_argument("--rescore", action="store_true",
                         help="re-score already evaluated fresh jobs (model comparison; uses a Claude call)")
     args = parser.parse_args(argv)
+    if args.command == "scheduler":   # the Windows task only; manual runs keep working
+        return scheduler_command(args.files)
 
     load_dotenv(ROOT / ".env")
     (ROOT / "logs").mkdir(exist_ok=True)
@@ -386,7 +424,7 @@ def main(argv=None) -> int:
         print("Session saved." if yc_scraper.has_session() else "No session saved.")
         return 0
     if args.command == "label":
-        files = args.files or sorted((ROOT / "reports").glob("*.md"))
+        files = [Path(f) for f in args.files] or sorted((ROOT / "reports").glob("*.md"))
         print(label_command(conn, files))
         return 0
     profile = load_profile(path=args.profile)
@@ -441,7 +479,10 @@ def _run(conn, cfg, profile, args, now, live) -> int:
                           live=live, google=google, source_info=source_info)
     if live:
         try:
-            send_digest_draft(conn, google["gmail"], result["run_id"], result["report"], now)
+            links = {"drafts": notify.GMAIL_DRAFTS,
+                     "tracker": f"https://docs.google.com/spreadsheets/d/{google['sheet_id']}" if google.get("sheet_id") else None}
+            send_digest(conn, google["gmail"], result["run_id"], {**result["digest_ctx"], "links": links}, now,
+                        delivery=cfg.get("digest", {}).get("delivery", "send"))
         except Exception as e:
             log.warning("digest draft failed: %s", e)
         counts = dict(result["counts"], failed_attempts=schedule.failed_attempts_today(conn, now),
@@ -451,7 +492,7 @@ def _run(conn, cfg, profile, args, now, live) -> int:
                     enabled=os.environ.get("NTFY_ENABLED", "true").lower() != "false",
                     server=cfg["notifications"]["ntfy_server"], sheet_url=sheet_url,
                     timeout=cfg["notifications"]["timeout_seconds"])
-    printable = {k: v for k, v in result.items() if k not in ("report", "outreach")}
+    printable = {k: v for k, v in result.items() if k not in ("report", "digest", "digest_ctx", "outreach")}
     print(json.dumps(printable, indent=2, default=str))
     print(f"Report: {result['report']}")
     return 0 if result["status"] == "success" else 1

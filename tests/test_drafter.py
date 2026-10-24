@@ -156,17 +156,22 @@ def test_draft_jobs_claude_failure(profile, cfg):
 
 # ---------------------------------------------------------------- Network tab notes (Phase 3)
 
-def test_network_pitch_note_rules(profile, cfg):
+PITCH_MSG = ("Thanks for connecting, {first_name}. Love what you're building. I build full-stack products "
+             "with React and Django and move fast with agentic coding in Claude Code. I know you're hiring in "
+             "the US and I'm in Pakistan; up for a quick call?")
+
+
+def test_network_pitch_is_one_message_and_notes_are_dropped(profile, cfg):
     j = job(outreach_type="network_pitch", bucket="us_auth_stretch", network_mode="pitch")
-    note = "Hi Sara, saw the backend role at Acme. I'm a full-stack engineer in Pakistan who's worked US hours. Open to a contractor alternative?"
-    ok = Draft(job_key="k1", outreach_type="network_pitch", network={"connection_note": note,
-                                                                      "after_accept_message": "Thanks for connecting!"})
+    ok = Draft(job_key="k1", outreach_type="network_pitch",
+               network={"connection_note": "Hi Sara, a note we will not send", "after_accept_message": PITCH_MSG})
     assert problems(ok, j, profile, cfg) == []
+    assert ok.network.connection_note is None              # requests go out without a note
     no_pk = Draft(job_key="k1", outreach_type="network_pitch",
-                  network={"connection_note": "Hi Sara, open to a contractor?", "after_accept_message": "Thanks"})
+                  network={"after_accept_message": "Thanks for connecting! Open to a contract?"})
     assert any("Pakistan" in p for p in problems(no_pk, j, profile, cfg))
     missing = Draft(job_key="k1", outreach_type="network_pitch")
-    assert any("without a connection note" in p for p in problems(missing, j, profile, cfg))
+    assert any("without a message" in p for p in problems(missing, j, profile, cfg))
 
 
 def test_connection_note_over_200_chars_rejected():
@@ -186,7 +191,22 @@ def test_no_note_for_emailed_jobs_or_when_budget_spent(profile, cfg):
 
 def test_network_text_goes_through_the_same_guards(profile, cfg):
     d = Draft(job_key="k1", outreach_type="application_brief", kit={"cover_note": "Hello", "form_answers": []},
-              network={"connection_note": "Just applied! I'm authorized to work in the US.",
-                       "after_accept_message": "Thanks"})
-    j = job(outreach_type="application_brief", network_mode="note")
+              network={"after_accept_message": "Thanks for connecting! Just applied. I'm authorized to work in the US."})
+    j = job(outreach_type="application_brief", network_mode="applied")
     assert any("US work authorization" in p for p in problems(d, j, profile, cfg))
+
+
+def test_linkedin_message_with_metrics_rejected(profile, cfg):
+    j = job(outreach_type="network_pitch", bucket="us_auth_stretch", network_mode="pitch")
+    metric = Draft(job_key="k1", outreach_type="network_pitch", network={
+        "after_accept_message": "Thanks for connecting! I cut API latency by 30% for a client. I'm in Pakistan."})
+    assert any("no numbers" in p for p in problems(metric, j, profile, cfg))
+    general = Draft(job_key="k1", outreach_type="network_pitch", network={"after_accept_message": PITCH_MSG})
+    assert problems(general, j, profile, cfg) == []
+
+
+def test_applied_message_with_metrics_rejected(profile, cfg):
+    j = job(outreach_type="application_brief", network_mode="applied")
+    d = Draft(job_key="k1", outreach_type="application_brief", kit={"cover_note": "Hello", "form_answers": []},
+              network={"after_accept_message": "Thanks for connecting! I cut API latency by 30% on a client project."})
+    assert any("LinkedIn message" in p for p in problems(d, j, profile, cfg))

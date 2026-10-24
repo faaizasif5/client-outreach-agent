@@ -245,3 +245,20 @@ def test_join_us_is_not_a_us_region(cfg):
 ])
 def test_parse_team_size(text, size):
     assert el.parse_team_size(text) == size
+
+
+@pytest.mark.parametrize("visa,expected", [
+    ("Visa: US Citizenship/Visa Not Required", ("stretch", "remote_us_stretch")),  # no auth requirement
+    ("Visa: US citizen/visa only", ("stretch", "us_auth_stretch")),
+    ("Visa: Will Sponsor", ("stretch", "remote_us_stretch")),
+])
+def test_yc_visa_field(cfg, visa, expected):
+    r = ev(cfg, f"Location: San Francisco, CA, US / Remote\n{visa}\nTeam size: 3 employees",
+           loc="San Francisco, CA, US / Remote", email=EMAIL)
+    assert outcome(r) == expected
+
+
+def test_remote_asia_beats_us_visa_label(cfg):
+    loc = "San Francisco / Singapore / Remote (Asia) / Remote (North America)"
+    r = ev(cfg, f"Location: {loc}\nVisa: US citizen/visa only", loc=loc)
+    assert (r.eligibility, r.reason) == ("eligible", "asia_included") and "us_visa_label_ignored" in r.flags

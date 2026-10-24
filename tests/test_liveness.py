@@ -1,5 +1,7 @@
 """Freshness check #2 (spec section 8): liveness of shortlisted jobs right before drafting."""
 import json
+
+import pytest
 from datetime import timedelta
 
 import requests
@@ -114,3 +116,25 @@ def test_linkedin_never_fetched():
     http = FakeHttp({})
     status, _ = f.check_liveness(j, http, CLOSED, now=NOW, fetched_sources=set(), complete_feeds=set())
     assert all("linkedin.com" not in c for c in http.calls)
+
+
+WWR_GATED = """<html><body><h1>Founding Engineer</h1>
+<a href="/job-seekers/account/register?alert=Create+an+account">Apply now</a>
+<a href="/career-services/job-copilot">AI Auto-Apply</a>
+<a href="/job-seekers/account/register?alert=x">Apply now</a></body></html>"""
+
+
+def test_job_board_signup_gate_is_detected():
+    url = "https://weworkremotely.com/remote-jobs/alloy-founding-forward-deployed-engineer"
+    j = job(sources=("wwr",), apply_url=url)
+    assert check(j, {url: (200, url, WWR_GATED)}, fetched=()) == ("gated", "apply_behind_signup_or_paywall")
+
+
+@pytest.mark.parametrize("html,gated", [
+    ('<a href="https://boards.greenhouse.io/acme/jobs/1">Apply now</a>', False),     # real ATS link
+    ('<p>Upgrade to apply for this role.</p>', True),
+    ('<a href="/pricing">Apply</a>', True),
+    ('<p>No apply button here</p>', False),
+])
+def test_is_gated(html, gated):
+    assert f.is_gated(html, "https://board.test/jobs/1") is gated

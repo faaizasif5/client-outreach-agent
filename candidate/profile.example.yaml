@@ -43,7 +43,7 @@ projects:
       - "RAG notes search with FastAPI and pgvector"
 
 skills:
-  production: [python, typescript, javascript, sql, vue.js, react, django, django-rest-framework, postgresql, redis]
+  production: [python, typescript, javascript, sql, vue.js, react, django, django-rest-framework, postgresql, redis, claude-code]   # agentic coding with Claude Code across the stack
   projects: [fastapi, next.js, pgvector, rag]
   other: [aws, docker]
 

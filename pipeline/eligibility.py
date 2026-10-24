@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pipeline.contacts import Contacts, route
 
 NEGATION = re.compile(r"\b(no|not|without|don't|doesn't|never|nor)\b[^.]{0,25}$", re.I)
+# "US Citizenship/Visa Not Required" (YC's visa field): the negation comes after the phrase.
+NEGATED_AFTER = re.compile(r"^[^.\n]{0,15}\b(not required|not needed|not necessary)\b", re.I)
 LOCATIONISH = re.compile(
     r"remote|time ?zones?|located|based|resid|anywhere|location|overlap|hours|work from|"
     r"countr|region|worldwide|global|hire in|hiring in|open to candidates", re.I)
@@ -47,7 +49,8 @@ def parse_team_size(text: str) -> int | None:
 def _any(patterns, text, negatable=False) -> bool:
     for p in patterns:
         for m in re.finditer(p, text or "", re.I | re.M):
-            if negatable and NEGATION.search(text[max(0, m.start() - 40):m.start()]):
+            if negatable and (NEGATION.search(text[max(0, m.start() - 40):m.start()])
+                              or NEGATED_AFTER.search(text[m.end():m.end() + 40])):
                 continue
             return True
     return False
@@ -164,8 +167,12 @@ def evaluate(*, title: str, location_text: str | None, description: str, contact
         auth = True
 
     if worldwide or asia:
-        if auth:
+        # An explicit Asia/Pakistan location (e.g. "Remote (Asia)") wins over a generic US visa
+        # label: that label applies to the job's US locations. "Worldwide" + US auth stays unclear.
+        if auth and not asia:
             return Eligibility("uncertain", "conflicting_signals", flags=flags)
+        if auth:
+            flags.append("us_visa_label_ignored")
         reason = "worldwide" if worldwide else "asia_included"
         return _finish(Eligibility("eligible", reason, "eligible", flags=flags), contacts, age_status)
 

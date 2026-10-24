@@ -183,10 +183,12 @@ def test_stretch_portal_with_founder_link_becomes_linkedin_pitch(env):
     assert result["outreach"]["pitches_created"] == 1
     assert "network: pitch" in claude.draft_prompts[0]
     net = conn.execute("SELECT * FROM network WHERE job_key=?", (key,)).fetchone()
-    assert net["status"] == "to_connect" and "Pakistan" in net["connection_note"] and len(net["connection_note"]) <= 200
+    assert net["status"] == "to_connect" and net["is_pitch"] == 1 and net["connection_note"] is None
+    assert "Pakistan" in net["after_accept_message"] and "{first_name}" not in net["after_accept_message"]
     assert conn.execute("SELECT COUNT(*) FROM applications WHERE job_key=?", (key,)).fetchone()[0] == 0  # no portal kit
     sheet_row = next(r for r in google["sheets"].tabs[st.NETWORK] if r[0] == net["id"])
-    assert sheet_row[st.NET_COL["Verified"]] == "check" and sheet_row[st.NET_COL["Status"]] == "to_connect"
+    assert sheet_row[st.NET_COL["Verified"]] == "Check first" and sheet_row[st.NET_COL["Status"]] == "To connect"
+    assert sheet_row[st.NET_COL["Source"]] == "Job listing" and "Open profile" in sheet_row[st.NET_COL["LinkedIn"]]
 
 
 def test_network_status_sync_and_contact(env):
@@ -206,13 +208,12 @@ def test_network_status_sync_and_contact(env):
     assert repo.is_company_contacted(conn, "tinyco", None)   # note was sent -> one outreach per company
 
 
-def test_note_budget_exhausted_means_no_pitch(env):
+def test_pitches_need_no_note_budget(env):
     conn, cfg, profile, reports = env
-    cfg["linkedin_notes_per_month"] = 0
-    key = stretch_with_founder_link(conn, cfg, profile)
+    cfg.pop("linkedin_notes_per_month", None)               # no such limit any more
+    stretch_with_founder_link(conn, cfg, profile)
     result = run(env, FakeClaude(), live=True, google=live_google())
-    assert result["outreach"]["pitches_created"] == 0
-    assert any(i["job_key"] == key for i in result["outreach"]["network_waiting"])
+    assert result["outreach"]["pitches_created"] == 1
 
 
 def test_emailed_jobs_get_no_connection_note(env):
@@ -225,4 +226,14 @@ def test_emailed_jobs_get_no_connection_note(env):
     run(env, FakeClaude(), live=True, google=live_google())
     rows = conn.execute("SELECT n.* FROM network n JOIN jobs j ON j.job_key=n.job_key "
                         "WHERE j.company_norm='rocketship'").fetchall()
-    assert rows and all(r["connection_note"] is None and r["after_accept_message"] for r in rows)
+    assert rows and all(r["connection_note"] is None and r["after_accept_message"] and not r["is_pitch"]
+                        for r in rows)
+
+
+def test_each_person_gets_their_own_name():
+    from pipeline.outreach import personalize
+    people = [{"name": "Berat Celik"}, {"name": "Eren Berke Saglam"}, {"name": "(profile x)"}]
+    assert personalize("Thanks for connecting, {first_name}!", people[1], people) == "Thanks for connecting, Eren!"
+    assert personalize("Thanks for connecting, Berat!", people[1], people) == "Thanks for connecting, Eren!"
+    assert personalize("Hi {first_name}", people[2], people) == "Hi there"
+    assert personalize(None, people[0], people) is None

@@ -121,6 +121,30 @@ def _ats_missing(http, apply_url: str | None) -> bool | None:
     return job_id not in {j.get("id") for j in json.loads(text or "{}").get("jobs", [])}
 
 
+PAYWALL_TEXT = re.compile(r"pay to apply|upgrade to apply|unlock (this|the) job|subscribe to apply|"
+                          r"premium members? (can|only)|become a (premium|pro) member", re.I)
+GATED_HREF = re.compile(r"/(account/register|register|sign[_-]?up|signup|login|log-in|pricing|premium|checkout|"
+                        r"subscribe|membership)\b", re.I)
+
+
+def is_gated(html: str, page_url: str) -> bool:
+    """True if a job board puts the apply button behind its own sign-up/paywall (an Apply link goes to
+    registration/pricing/checkout and none leaves the board), or says so in plain words."""
+    from bs4 import BeautifulSoup
+    from urllib.parse import urljoin, urlsplit
+    if PAYWALL_TEXT.search(html or ""):
+        return True
+    soup = BeautifulSoup(html or "", "html.parser")
+    applies = [urljoin(page_url, a["href"]) for a in soup.find_all("a", href=True)
+               if re.search(r"\bapply\b", a.get_text(" ", strip=True), re.I)]
+    if not applies:
+        return False
+    host = urlsplit(page_url).hostname
+    leaves_board = any(urlsplit(u).hostname != host for u in applies)       # a real company/ATS link exists
+    gated = any(urlsplit(u).hostname == host and GATED_HREF.search(urlsplit(u).path) for u in applies)
+    return gated and not leaves_board
+
+
 def check_liveness(job, http, closed_patterns: list[str], *, now: datetime, fetched_sources: set[str],
                    complete_feeds: set[str]) -> tuple[str, str]:
     """('open' | 'closed' | 'unknown', why). Unknown jobs are not drafted this run."""
@@ -159,6 +183,8 @@ def check_liveness(job, http, closed_patterns: list[str], *, now: datetime, fetc
     orig_path, final_path = urlsplit(url).path.rstrip("/"), urlsplit(final).path.rstrip("/")
     if final_path != orig_path and final_path in HOME_PATHS and orig_path not in HOME_PATHS:
         return "closed", "redirected_home"
+    if is_gated(text, final):
+        return "gated", "apply_behind_signup_or_paywall"   # never pay to apply
     if CLOSED_PAGE.search(text or ""):
         return "closed", "closed_text"
     return "open", "ok"

@@ -67,8 +67,17 @@ def job_block(job: dict, description_chars: int) -> str:
             + (f"Form questions:\n{questions}\n" if questions else "")
             + f"network: {job.get('network_mode', 'none')}\n"
             + f"tailor: {'yes' if job.get('tailor') else 'no'}\n"
+            + _stack_lines(job.get("stack"))
             + "".join(f"person: {p['name']} ({p.get('title') or 'unknown title'})\n" for p in job.get("people") or [])
             + f"{(job.get('description') or '')[:description_chars]}\n</listing>")
+
+
+def _stack_lines(sm) -> str:
+    if not sm or not sm.asked:
+        return "their stack: not stated (use the candidate's broad stack)\n"
+    return (f"their stack: {', '.join(sm.asked)}\n"
+            f"mention: {', '.join(sm.mention) or 'none'}\n"
+            f"never claim: {', '.join(sm.gaps) or 'none'}\n")
 
 
 def build_prompt(jobs: list[dict], profile: dict, cfg: dict) -> str:
@@ -121,10 +130,12 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
     if d.outreach_type.value != job["outreach_type"]:
         problems.append(f"outreach_type {d.outreach_type.value} != {job['outreach_type']}")
     mode = job.get("network_mode", "none")
+    if d.network:   # LinkedIn requests go out without a note (free-tier limit); only the message is used
+        d.network.connection_note = None
     if job["outreach_type"] == "network_pitch":
-        if not (d.network and d.network.connection_note):
-            problems.append("LinkedIn pitch without a connection note")
-        elif "pakistan" not in d.network.connection_note.lower():
+        if not (d.network and d.network.after_accept_message.strip()):
+            problems.append("LinkedIn pitch without a message")
+        elif "pakistan" not in d.network.after_accept_message.lower():
             problems.append("LinkedIn pitch must say the candidate is based in Pakistan")
     elif job["outreach_type"] == "direct_email":
         if not (d.subject and d.body.strip()):
@@ -134,18 +145,34 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
             problems.append(f"body too long ({len(lines)} lines)")
     elif not d.kit:
         problems.append("portal job without kit")
+    # Stack: every technology named must be in the profile; outreach must lean on their stack.
+    from pipeline import stack as stack_mod
+    pitch_texts = [d.body or ""] + ([d.kit.cover_note] if d.kit else [])
+    if d.network and mode in ("pitch", "applied"):
+        pitch_texts.append(d.network.after_accept_message)
+    all_texts = pitch_texts + ([a.answer for a in d.kit.form_answers] if d.kit else []) + (
+        [d.network.after_accept_message] if d.network else [])
+    problems += stack_mod.check("\n".join(all_texts), job, profile, cfg, require_mention=False)
+    for t in pitch_texts:
+        if t.strip():
+            problems += [p for p in stack_mod.check(t, job, profile, cfg, require_mention=True)
+                         if p.startswith("doesn't mention")]
+    if job["outreach_type"] == "network_pitch" and d.network and \
+            "claude code" not in (d.network.after_accept_message or "").lower():
+        problems.append("LinkedIn pitch should say you work across the stack with Claude Code")
+    problems[:] = list(dict.fromkeys(problems))
     if job["bucket"] != "eligible" and (job["outreach_type"] == "application_brief" or d.kit):
         problems.append("stretch job must never get a portal kit")
+    if d.network and mode != "none" and re.search(r"\d", d.network.after_accept_message or ""):
+        problems.append("LinkedIn message must stay general: no numbers or metrics")
 
     if d.tailored and (not job.get("tailor") or d.tailored.resume_key.value != job["resume_key"]):
         d.tailored = None                       # code decides which jobs get a tailored resume
-    if d.network and mode in ("none", "after_accept_only"):
-        d.network.connection_note = None        # code decides who gets a note (budget, emailed jobs)
     if mode == "none":
         d.network = None
     texts = [d.subject or "", d.body]
     if d.network:
-        texts += [d.network.connection_note or "", d.network.after_accept_message]
+        texts += [d.network.after_accept_message]
     if d.kit:
         texts += [d.kit.cover_note] + [a.answer for a in d.kit.form_answers]
     text = "\n".join(texts)

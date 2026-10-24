@@ -45,7 +45,7 @@ pages:
     enabled: true                # session (python main.py yc-login). Never auto-repaired by Claude:
     requires_session: true       # logged-in pages carry account data, so they are never sent anywhere.
     repair: false
-    results_url: https://www.workatastartup.com/companies?demographic=any&hasEquity=any&hasSalary=any&industry=any&interviewProcess=any&layout=list-compact&sortBy=created_desc&tab=any&usVisaNotRequired=any
+    results_url: https://www.workatastartup.com/companies?demographic=any&hasEquity=any&hasSalary=any&industry=any&interviewProcess=any&layout=list-compact&role=eng&sortBy=created_desc&tab=any&usVisaNotRequired=any
     mode: xhr                    # listings arrive in background requests while the page scrolls
     xhr:
       match: /companies/fetch    # only these responses are kept (company + job data, no profile)

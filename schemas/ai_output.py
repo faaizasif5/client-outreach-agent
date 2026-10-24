@@ -69,8 +69,8 @@ class Kit(BaseModel):
 
 
 class NetworkNote(BaseModel):
-    connection_note: str | None = Field(default=None, max_length=200)   # LinkedIn limit
-    after_accept_message: str = Field(max_length=600)
+    connection_note: str | None = Field(default=None, max_length=200)   # unused: requests go without a note
+    after_accept_message: str = Field(max_length=900)                   # the one message sent after they accept
 
 
 class Draft(BaseModel):

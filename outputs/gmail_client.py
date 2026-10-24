@@ -72,7 +72,7 @@ def is_not_found(err: Exception) -> bool:
 
 
 def build_mime(*, sender: str, to: str, subject: str, body: str, job_key: str,
-               attachment: Path | None = None, filename: str | None = None) -> EmailMessage:
+               attachment: Path | None = None, filename: str | None = None, html: str | None = None) -> EmailMessage:
     msg = EmailMessage()
     msg["To"] = to
     if sender:
@@ -80,6 +80,8 @@ def build_mime(*, sender: str, to: str, subject: str, body: str, job_key: str,
     msg["Subject"] = subject
     msg[JOB_HEADER] = job_key            # lets a crashed run find its own draft again
     msg.set_content(body)
+    if html:
+        msg.add_alternative(html, subtype="html")   # plain text stays as the fallback part
     if attachment:
         data = Path(attachment).read_bytes()
         ctype = mimetypes.guess_type(str(attachment))[0] or "application/pdf"
@@ -100,6 +102,12 @@ class GmailClient:
     def create_draft(self, msg: EmailMessage) -> tuple[str, str]:
         draft = execute(self.svc.drafts().create(userId="me", body={"message": {"raw": _raw(msg)}}))
         return draft["id"], draft["message"]["threadId"]
+
+    def send(self, msg: EmailMessage) -> str:
+        """Send a message. Used only for the daily digest, addressed to yourself."""
+        if msg["To"].lower() != self.address:
+            raise ValueError("send() is only for mail to yourself; outreach always stays a draft")
+        return execute(self.svc.messages().send(userId="me", body={"raw": _raw(msg)}))["id"]
 
     def delete_draft(self, draft_id: str) -> None:
         try:

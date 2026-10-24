@@ -4,6 +4,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1            # dry-run mode
 #   powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1 -Live      # after approval
+#   .venv\Scripts\python main.py scheduler off | on | status                     # pause / resume
 #   schtasks /Delete /TN JobOutreachAgent /F                                     # uninstall
 param([switch]$Live)
 

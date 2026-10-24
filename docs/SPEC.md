@@ -2,9 +2,39 @@
 
 ## How to Use This Spec (for Claude Code)
 - Build in the phase order in section 20. Finish Phase 1 and meet its exit criteria before starting Phase 2.
+  (Status: all three phases are built and live mode is on. Section 0 lists every change from the original plan.)
 - Before writing the Claude CLI wrapper, run `claude --help` and use the current flags for JSON output, disabling tools, and limiting to one turn.
 - Keep the stack as listed. Do not add frameworks or infrastructure not named here.
 - Anything in "Deferred Until After MVP" is out of scope.
+
+## 0. Current State and Changes from the Original Plan (updated 2026-10-25)
+Everything below is built. These changes were decided while building; the sections that follow are
+updated to match, and this list is the quick summary.
+- **Build order:** Phase 2 and 3 were built before Phase 1's calibration finished (approved). Live mode
+  (`outreach.live_enabled`) was switched on after a supervised first live run. Calibration labeling
+  continues alongside.
+- **Scoring model:** `sonnet` at medium effort (configurable; `haiku` / `effort: low` are the cheaper options).
+  Stretch jobs are scored on skills and seniority only: their known US requirement is never a reason to skip.
+- **Stack matching:** code reads each listing's technologies, compares them with the profile, and tells
+  drafting what to mention and what never to claim. Every draft is rejected if it names a technology not
+  in the profile, ignores the listing's stack, or (LinkedIn pitch) omits agentic coding with Claude Code.
+- **LinkedIn without connection notes:** the free tier allows only a few personalized notes, so requests go
+  out without a note and the pitch is one message sent after they accept. No monthly note budget. Messages
+  stay general (broad stack and value): no numbers, single achievements or client names (enforced in code).
+- **YC sources (section 7a):** three pages: ycombinator.com's public remote-engineering board, Work at a
+  Startup's public jobs page, and the Work at a Startup companies directory read with a session the user
+  created by logging in manually (`python main.py yc-login`; no password stored). The logged-in page is
+  never sent to Claude and never snapshotted.
+- **Eligibility:** "Remote (Asia)" (or Pakistan/APAC) wins over a generic US visa label. "US Citizenship/
+  Visa Not Required" is not a US requirement.
+- **Never pay to apply:** job-board apply buttons behind sign-up/pricing/checkout (e.g. We Work Remotely)
+  are detected at the liveness check; those jobs go to manual review, never to a kit. WWR jobs use the
+  company's own link from the listing when there is one.
+- **Digest:** a short HTML email sent to myself each run (only actions, changes, problems, up to 5 jobs
+  worth a manual look); the full report with labels stays in `reports/<date>.md`.
+- **Sheets:** friendly status labels, styled clickable links, a styled layout re-applied every run,
+  LinkedIn status `closed`, and an `Archive` tab that finished rows move to automatically.
+- **Tailored resumes:** plain-marker templates built from my `.tex` files (no Jinja: not in the library list).
 
 ## 1. Goal
 A personal tool that finds fresh, remote-friendly software engineering jobs at startups, decides which ones I'm genuinely eligible for, picks the right stack-specific resume, and prepares either a Gmail draft (direct email) or an application brief (portal jobs). My daily input: about 10-15 minutes for review (digest + email drafts + LinkedIn), plus optional, time-boxed portal applications.
@@ -27,7 +57,7 @@ A personal tool that finds fresh, remote-friendly software engineering jobs at s
    -> [Keyword pre-match] -> [Claude call #1: score + pick resume] -> [Pydantic validate]
    -> [Shortlist top N] -> [Freshness check #2: liveness]
    -> [Claude call #2: draft emails / application briefs] -> [Pydantic validate]
-   -> [Gmail: create drafts]  +  [Daily digest draft to myself]
+   -> [Gmail: create drafts]  +  [Daily digest emailed to myself]
    -> [Me: review + send]
    -> [Next run: reconcile sent drafts, freshness check #3 on unsent drafts]
 All state in SQLite.
@@ -36,11 +66,12 @@ All state in SQLite.
 ## 4. Tech Stack
 - Python 3.11+, SQLite
 - Claude Code CLI (`claude -p`), logged in with Claude Pro
-- Gmail API: `gmail.compose` (drafts) + `gmail.metadata` (detect sent/replies, headers only)
+- Gmail API: `gmail.compose` (drafts, and sending the daily digest to myself only) + `gmail.metadata` (detect sent/replies, headers only)
 - Google Sheets API + `drive.file` scope: portal-application tracker (only files the tool creates)
 - Scheduler: runs on the first laptop login/unlock/wake of each day (see section 19a); no fixed clock time
 - Phone notifications: ntfy (HTTP POST to a private topic; ntfy app on my phone)
 - Libraries: `requests`, `feedparser`, `playwright`, `beautifulsoup4`, `pydantic`, `google-api-python-client`, `google-auth-oauthlib`, `pyyaml`, `python-dotenv`, `pytest`
+- LaTeX compiler: Tectonic (tailored resumes)
 - Not used: LangChain, vector DBs, multi-agent frameworks
 
 ## 5. Project Structure
@@ -84,7 +115,7 @@ job-agent/
 ├── outputs/
 │   ├── gmail_client.py        # auth, drafts, metadata reads
 │   ├── drafts.py              # idempotent draft creation
-│   ├── digest.py              # daily digest (draft to myself + local .md)
+│   ├── digest.py              # daily digest (HTML email to myself + local .md report)
 │   ├── notify.py              # ntfy push notifications
 │   └── sheets_tracker.py      # Google Sheets tracker: create, read, sync, append
 ├── prompts/
@@ -102,6 +133,11 @@ job-agent/
 ├── reports/                   # local digests and dry-run drafts
 └── logs/
 ```
+Added while building: `pipeline/stack.py` (stack matching), `pipeline/outreach.py` (liveness -> drafting ->
+Gmail/Sheets stage), `pipeline/schedule.py` (once-per-day guard), `outputs/stats.py` (weekly stats),
+`config/yc_selectors.yaml`, `scripts/install_task.ps1` (Windows task), `candidate/latex/*.tex.tmpl` +
+`candidate/bullets.yaml` (tailored resumes), `tools/tectonic/` (LaTeX compiler, gitignored),
+`data/yc_browser_profile/` (YC session, gitignored).
 
 ## 6. Candidate Profile (source of truth)
 `candidate/profile.yaml` (gitignored) — every claim the tool may make must exist here. It is filled from my real resume and stays on my machine only: real names, employers, projects, metrics and contact details never go in this spec or the repo. The repo ships `candidate/profile.example.yaml` with fake data; the shape below uses the same fake data.
@@ -208,23 +244,26 @@ Rules:
 - A company is blocked from new jobs entering drafting if it has any outreach that is active or completed:
   - Email: `drafting`, `drafted`, `sent`, or any later status
   - Portal: `pending`, `applied`, or any later outcome
-  - LinkedIn pitch (stretch jobs routed to Network): `to_connect` with a note, `requested`, `connected`
+  - LinkedIn pitch (stretch jobs routed to Network, marked `is_pitch`): `to_connect`, `requested`, `connected`, `closed`
 - Unblocked only when every outreach for that company ended without contact: email `discarded`/`expired`/`draft_failed`, portal `discarded`/`expired`, network `skipped`.
-- `companies_contacted` is written when contact actually happens: email confirmed sent, portal marked `applied`, or LinkedIn note marked `requested`.
+- `companies_contacted` is written when contact actually happens: email confirmed sent, portal marked `applied`, or a LinkedIn pitch marked `requested`.
 - A second role at a blocked company is kept in the database (status `suppressed_company`) and listed in the digest, so I can choose to mention it in my existing conversation.
 - Checked in one SQLite transaction together with creating the outreach row, so two jobs from the same company in one run can't both pass.
 
-## 7a. YC Work at a Startup — Zero-Cost Scraper with Claude Repair (Phase 3)
+## 7a. YC Startup Jobs — Zero-Cost Scraper with Claude Repair (Phase 3)
 Goal: zero cost. Normal runs use no Claude at all. Claude (on my Pro plan) is used only when the scraper breaks, to repair it.
 
 **Normal run (no Claude)**
-- `yc_scraper.py` uses Playwright (headless browser, no AI) to load the public results page with filters in the URL (engineering, remote).
+- `yc_scraper.py` uses Playwright (headless browser, no AI) to load three results pages, each with its own rules, health history and repair:
+  1. `yc_board`: ycombinator.com's public remote software-engineering board (listings carry their posting age).
+  2. `waas_jobs`: Work at a Startup's public jobs page (engineering, remote only). It has no dates, so the posting date and founders come from the company's public YC page (cached a week); stale jobs skip their job page.
+  3. `waas_companies`: the Work at a Startup companies directory, newest first, read with my saved session. Only remote engineering jobs are kept, and only company/job fields (nothing from my account). A job updated over 14 days ago is stale; otherwise its date comes from the public YC company page.
 - Listings are extracted with CSS selectors stored in `config/yc_selectors.yaml` (data, not code).
 - Stops at the first listing already in the database, so only new jobs are read.
 - Detail pages fetched by `detail_fetch.py` (plain Python, 1 request every 2-3 seconds, cached).
-- Public pages only. No logging in to my YC account. Check YC's terms before enabling.
+- Login: I log in myself once (`python main.py yc-login`); only the session cookie is kept (`data/yc_browser_profile`, gitignored). The tool never stores or types a password. An expired session shows in the digest and a phone push ("run yc-login"); the logged-in page is never auto-repaired, never snapshotted and never sent to Claude.
 - Runs daily as part of the normal first-open-of-the-day run (section 19a). It costs no Claude usage, and applying early to fresh YC listings improves the odds of a reply.
-- Polite load: one results page per day, plus detail pages only for listings not already in the database.
+- Polite load: each results page once per day, plus detail pages only for listings not already in the database. A job seen on two pages is read once.
 - For each new YC company, also open its public YC company page once to save founders' names, titles, and LinkedIn links for the `Network` tab (cached; never re-fetched for known companies).
 
 **Health checks (every run)**
@@ -274,7 +313,8 @@ Result: `healthy` -> continue. `broken` -> skip YC this run (other sources still
 - Fetch the job URL: 404, redirect to careers home, or text like "no longer accepting" / "position filled" -> `closed`.
 - Ashby / Greenhouse / Lever job boards: posting missing from the company's public board -> `closed`.
 - HN: comment deleted, or text/replies say "filled" / "closed" -> `closed`.
-- A job that disappears from its source feed after being seen -> `closed`.
+- A job that disappears from its source feed after being seen -> `closed` (only feeds that list every active job, i.e. WWR; RemoteOK's API shows only the latest jobs).
+- Apply button behind the job board's own sign-up, pricing or checkout (or "pay to apply"), with no link to the company -> `gated`: no kit or email, moved to manual review with "apply on the company's own site". Never pay to apply.
 
 **Check #3 — unsent drafts**
 - Each run re-checks drafts older than 3 days.
@@ -300,6 +340,7 @@ Context: most startup roles ask for US-based or US-authorized candidates. Pitchi
 - "Remote - worldwide", "anywhere", "global", "work from anywhere"
 - Explicitly includes Pakistan / South Asia / APAC / "Asia time zones"
 - "Contractors welcome" / "B2B" / pays via Deel, Remote, Oyster with worldwide coverage
+- An explicit Asia/Pakistan/APAC location (e.g. "Remote (Asia)") wins over a generic US visa label on the same listing; "US Citizenship/Visa Not Required" is not a US requirement
 
 **Stretch (US-focused, pitched as a contractor alternative)**
 Three sub-buckets, tracked separately:
@@ -314,7 +355,7 @@ They proceed if:
 
 How they are handled:
 - Never through the portal. The portal asks about work authorization; I never answer it untruthfully, and a truthful "no" is auto-rejected, so the portal is skipped
-- Route: founder/recruiting email -> email draft; no email but founder LinkedIn -> pitch via the `Network` tab (connection note + after-accept message); neither -> ineligible `stretch_no_direct_contact`
+- Route: founder/recruiting email -> email draft; no email but founder LinkedIn -> pitch via the `Network` tab (a plain connection request, then one message after they accept); neither -> ineligible `stretch_no_direct_contact`
 - Every message openly states I'm based in Pakistan, acknowledges what the listing asked for, and offers a B2B contractor alternative (value-first pitch, section 11). The decision is left to the founder; no pressure, no follow-up spam (one contact per company)
 - Reply rates tracked per sub-bucket and per role type. No automatic shut-off: if a sub-bucket has no positive replies after ~40 sent messages, the weekly digest flags it for me to decide
 
@@ -344,7 +385,8 @@ How they are handled:
 
 ## 10. AI Scoring (Claude call #1)
 - Input: up to 30 eligible + stretch jobs, descriptions trimmed to requirements/responsibilities (~400 tokens each), resume summaries + skill lists.
-- Model: lighter model (`--model haiku`).
+- Model: `sonnet` at medium effort (`scoring.model` / `scoring.effort` in `config.yaml`; `haiku` is the cheaper option).
+- Each listing carries its bucket. Stretch jobs are judged on skills and seniority only; their US requirement is known and never a reason to skip (code also drops `hidden_location_restriction` for them).
 - Seniority is judged here by Claude (regex for "3-5 years" is too brittle).
 - No weighted 5-part rubric: one score + short evidence + confidence is more honest and cheaper.
 
@@ -434,7 +476,7 @@ Rules, in order:
 | Both a recruiting email and an apply URL, no stated preference | eligible | Sheet (portal kit). The listing's own process wins; emailing on top can come across as skipping the line |
 | Both, no stated preference | stretch | Email draft (stretch jobs never use portals) |
 | Only an apply URL | eligible | Sheet (portal kit) |
-| Only an apply URL, founder LinkedIn known | stretch | Network tab pitch (LinkedIn note) |
+| Only an apply URL, founder LinkedIn known | stretch | Network tab pitch (LinkedIn message after they accept) |
 | Only an apply URL, no founder contact | stretch | Ineligible: `stretch_no_direct_contact` |
 | Neither | any | Ineligible: `no_application_path` |
 
@@ -461,9 +503,9 @@ Many jobs only accept applications on their own site (Ashby, Greenhouse, Lever, 
 | Fit | tool | score 0-100 |
 | Why | tool | one-line reason |
 | Kit | tool | link to the matching row in the `Kits` tab |
-| Status | me | dropdown: `pending`, `applied`, `discarded` (tool may set `expired`) |
+| Status | me | dropdown: Pending, Applied, Not interested (tool may set Expired) |
 | Notes | me | free text, never overwritten |
-| Outcome | me (optional) | dropdown: `replied`, `interview`, `rejected`, `offer` |
+| Outcome | me (optional) | dropdown: Replied, Interview, Rejected, Offer |
 
 Formatting: header row frozen, `expired` rows greyed out, `applied` rows lightly highlighted (conditional formatting set up on creation).
 
@@ -498,7 +540,7 @@ Where people come from (zero cost, in this order):
 Hard rules:
 - Never fetch, scrape, or automate linkedin.com. The tool only stores links taken from other sites, or builds search links I click.
 - Max 2 people per company: founder/CEO/CTO first, then an engineering lead if listed.
-- `Verified` = yes only when the link came from the YC page or the company's own site. Search links are always `check`.
+- `Verified` = "✓ Verified" only when the link came from the YC page or the company's own site; otherwise "Check first". Source shows "YC profile", "Company site", "LinkedIn search" or "Job listing".
 
 Columns:
 | Column | Filled by | Notes |
@@ -508,17 +550,32 @@ Columns:
 | Person, Title | tool | from the source page |
 | LinkedIn | tool | profile link, or search link |
 | Source, Verified | tool | `yc_page` / `team_page` / `search`; yes / check |
-| Connection note | tool | max 200 characters (validated), or empty = connect without a note |
-| After-accept message | tool | 2-4 lines to send once they accept |
-| Status | me | dropdown: `to_connect`, `requested`, `connected`, `skipped` |
+| Message (send after they accept) | tool | the one message: the pitch for stretch jobs, a short hello otherwise |
+| Status | me | dropdown: To connect, Requested, Connected, Skipped, Closed |
 | Notes | me | free text, never overwritten |
 
-When to write a note:
-- Portal jobs: note references the application ("just applied for the backend role…") plus one specific, true detail from the listing or YC page.
-- Jobs I emailed: no note (plain connect), so it doesn't feel like double outreach; after-accept message only.
-- Stretch jobs routed here (no email, founder LinkedIn known): the note is the pitch. Short and honest, e.g. "Hi Sara, saw the backend role at Acme. I'm a full-stack engineer in Pakistan who's worked US hours embedded with a US client team. I know you're hiring US-based; open to a contractor alternative?" (max 200 characters). These get notes before other jobs within the monthly budget, since the note is their only message.
-- Monthly note budget: `linkedin_notes_per_month` in `config.yaml` (set to my actual free-account limit). Notes go to the highest-fit jobs first; once the month's count of `requested` rows with a note hits the limit, new rows get no note.
+LinkedIn messages (requests always go out without a note; the free tier allows only a few):
+- Stretch jobs routed here (no email, founder LinkedIn known, row marked `is_pitch`): the message is the
+  pitch, 4 short lines: something genuine about what they build, 2-3 of their stack that I have plus
+  working across the stack with agentic coding via Claude Code, the honest Pakistan / US hours / contract
+  line, and a light ask for a call.
+- Portal jobs: thanks, I applied on their site, and how my stack fits.
+- Jobs I emailed: a short thanks and a pointer to the email (no second pitch).
+- No numbers, metrics, single achievements or client names in any message (enforced in code). Each person
+  gets their own first name. No monthly note budget.
+- Statuses: Skipped = never sent (no outreach recorded); Closed = sent or connected and done (company stays
+  contacted). Both move the row to the Archive tab.
 - Same truthfulness rules as emails: no invented facts about the person or company.
+
+**Tab 4: `Archive`**
+- Each run, after syncing my edits, finished rows move here: Applications that are Not interested, Expired
+  or Rejected (their Kits rows go too) and Network rows that are Skipped or Closed. In-progress rows never
+  move. Columns: archived date, from tab, ID, company, role/person, status, outcome, notes, link. Rows are
+  copied before they are deleted. `sheets.auto_archive: false` turns it off.
+
+**Sheet look:** header, tab colours, banding, status chips, fit colour scale and link styling are
+re-applied each run; columns are sized and rows fit their text. Kit links find their kit by ID, so moving
+or sorting rows never breaks them.
 
 Written in Claude call #2 alongside the emails and kits (no extra call). `Status` syncs to SQLite like the other tabs.
 
@@ -527,6 +584,9 @@ Written in Claude call #2 alongside the emails and kits (no extra call). `Status
 - Mention a company/product detail only if it appears in the listing text provided.
 - If no verified detail exists, write a relevant email without forced personalization.
 - 1-2 achievements copied from the profile; never invent metrics or skills.
+- Stack: name 2-3 technologies from the listing that I have (code passes "mention" and "never claim"
+  lists); every technology named must be in the profile (checked in code). In pitch emails and LinkedIn
+  pitches, mention once that I work across the stack with agentic coding via Claude Code.
 - Mention contractor availability + overlap hours when the role isn't explicitly worldwide.
 - For all stretch sub-buckets, value-first pitch in this order:
   1. Proof: one or two specific results relevant to the role (from `facts`)
@@ -536,7 +596,7 @@ Written in Claude call #2 alongside the emails and kits (no extra call). `Status
   - Price variant A/B: variant `a` mentions "cost-effective" once in step 3; variant `b` makes no cost mention. Assigned alternately, stored per application, reply rates compared in the weekly stats. Never lead with price, never name a rate in the first email.
   - Never imply US work authorization or US citizenship.
 - End with one low-friction ask (short call).
-- Output per job: `{job_key, outreach_type, subject, body, kit?, network?}`, validated with Pydantic (`network.connection_note` max 200 characters).
+- Output per job: `{job_key, outreach_type, subject, body, kit?, network?, tailored?}`, validated with Pydantic. `outreach_type` is `direct_email`, `application_brief` or `network_pitch`; `network` carries only the after-accept message (any connection note is dropped).
 
 **Never in the email body:** scores, reasons, evidence. Those go only in the digest.
 
@@ -544,8 +604,8 @@ Written in Claude call #2 alongside the emails and kits (no extra call). `Status
 For jobs with fit >= 80, the tool can produce a resume adjusted to the role. Claude never edits LaTeX directly.
 
 **Setup**
-- `candidate/latex/<resume_key>.tex.j2`: my LaTeX resumes turned into Jinja templates with slots: `summary`, `bullets` (per project/role, ordered), `skills_core`.
-- `candidate/bullets.yaml`: pre-approved bullet bank, each with an ID, the exact text, and the facts it relies on. Only bullets I wrote or approved.
+- `candidate/latex/<resume_key>.tex.tmpl`: built from my own `.tex` resumes, with plain markers for the slots `%%SUMMARY%%`, `%%BULLETS:<section>%%`, `%%SKILLS_CORE%%` (no Jinja: it is not in the library list).
+- `candidate/bullets.yaml`: bullet bank built from the bullets in my own resumes, each with an ID, the exact text, and the profile facts it relies on. Only bullets I wrote or approved.
 - Compiler: Tectonic (small, self-contained) or an existing pdflatex install.
 
 **How it works**
@@ -628,8 +688,8 @@ def run_claude(prompt: str, model: str, schema: type[BaseModel],
 - Reply from another address in the thread -> status `replied`.
 
 **Daily digest**
-- Created as a Gmail draft addressed to myself + saved to `reports/YYYY-MM-DD.md`.
-- Contains: new drafts with score/reason/evidence, application briefs, uncertain jobs to review, expired drafts, errors, weekly stats on Mondays.
+- Emailed to myself each run as a short HTML email with a plain-text fallback (`digest.delivery: send`; `draft` keeps a draft instead), plus `reports/YYYY-MM-DD-digest.md`. The full report with all scored jobs and labels stays in `reports/YYYY-MM-DD.md`.
+- Contains only: today's emails / portal applications / LinkedIn requests (company, role, fit, one-line reason, their stack vs mine, buttons), changes since the last run, problems that need me, up to 5 engineering jobs worth a manual look, and weekly stats on Mondays.
 
 **Phone notification (ntfy)**
 - After the run finishes, `notify.py` sends one push via ntfy so I know drafts are ready.
@@ -745,6 +805,7 @@ CREATE TABLE runs (
 CREATE TABLE schema_version (version INTEGER NOT NULL);
 ```
 **Migrations:** numbered files in `db/migrations/` (`001_init.sql`, `002_...`); on startup apply any with number > `schema_version`.
+Added since: `002_phase2` (dry-run drafts, sheet queue, status history, Drive files), `003_phase3` (company pages, YC health/repairs, tailored resumes), `004_yc_pages` (per-page YC health), `005_network_pitch` (`network.is_pitch`). `db/schema.sql` shows the full current schema.
 
 ## 16. Application Status Flow
 ```
@@ -754,6 +815,7 @@ drafting -> drafted -> sent -> replied -> interview -> offer | rejected
 drafting -> draft_failed -> (retry next run) -> drafted
 
 application_brief: pending -> applied (I mark it in the sheet, or confirmation email detected) -> replied | interview | rejected | offer
+network: to_connect -> requested -> connected -> closed;  to_connect | requested -> skipped
                    pending -> discarded (I mark it in the sheet)
                    pending -> expired (job closed or still pending after 7 days)
 ```
@@ -762,7 +824,7 @@ Code enforces allowed transitions with a simple dict of `{from_status: {allowed_
 ## 17. Token Budget (per day, estimated)
 | Call | Input | Output |
 |---|---|---|
-| #1 Scoring (~30 jobs, lighter model) | ~14k | ~3.5k |
+| #1 Scoring (~30 jobs, sonnet medium) | ~14k | ~3.5k |
 | #2 Drafting (~5-10 jobs, stronger model) | ~5-8k | ~1-2k |
 | CLI overhead per call (system prompt, minimized with tools off) | varies | — |
 | YC scraper (normal weeks) | 0 | 0 |
@@ -789,7 +851,7 @@ Code enforces allowed transitions with a simple dict of `{from_status: {allowed_
 - "Do not apply if outside the US" -> stretch: explicit_us_only when enabled, ineligible when `pitch_explicit_us_only: false`
 - Stretch job with only a portal link but a founder LinkedIn -> Network tab pitch, never a portal kit
 - Tailored resume with an unknown bullet ID, an invented number, or 2 pages -> rejected, standard PDF attached
-- Network: no request ever goes to linkedin.com; connection notes over 200 characters rejected; no note for companies I emailed; note budget respected
+- Network: no request ever goes to linkedin.com; connection notes always dropped; messages with numbers rejected; each person gets their own name; LinkedIn pitch rows keep the one-company rule
 - ATS confirmation email from a company with an open kit -> marked `applied`
 - Sheets API down -> rows queued in SQLite, written next run
 - I sort/filter the sheet -> sync still matches rows by ID
@@ -801,13 +863,18 @@ Code enforces allowed transitions with a simple dict of `{from_status: {allowed_
 - Notification body never contains company names, titles, or emails
 
 ## 19. Setup Checklist
-- [ ] Install Claude Code CLI and log in with the Pro account
-- [ ] Test: `echo "say hi" | claude -p --model haiku`
-- [ ] Google Cloud project -> enable Gmail, Google Sheets, and Google Drive APIs -> OAuth desktop credentials -> `credentials.json`
-- [ ] Put resume PDFs in `candidate/resumes/`
-- [ ] Fill `candidate/profile.yaml` truthfully (skills, projects, achievements, links, overlap hours)
-- [ ] Install the ntfy app on my phone, subscribe to a random topic, put it in `.env`
-- [ ] Fill `config.yaml` (caps, thresholds, max_age_days, eligibility patterns, `offer_paid_trial`, role-title keywords, `stretch_min_fit`, `stretch_max_team_size`, `pitch_explicit_us_only`)
+- [x] Install Claude Code CLI and log in with the Pro account
+- [x] Test: `echo "say hi" | claude -p --model haiku`
+- [x] Google Cloud project -> enable Gmail, Google Sheets, and Google Drive APIs -> OAuth desktop credentials -> `credentials.json`
+- [x] Put resume PDFs in `candidate/resumes/`
+- [x] Fill `candidate/profile.yaml` truthfully (skills, projects, achievements, links, overlap hours)
+- [x] Install the ntfy app on my phone, subscribe to a random topic, put it in `.env`
+- [x] Fill `config.yaml` (caps, thresholds, max_age_days, eligibility patterns, `offer_paid_trial`, role-title keywords, `stretch_min_fit`, `stretch_max_team_size`, `pitch_explicit_us_only`)
+- [x] `python main.py setup-google` (OAuth, creates the tracker sheet, uploads resumes to Drive)
+- [x] Resume `.tex` files in `candidate/latex/`; Tectonic in `tools/tectonic/`
+- [x] `python main.py yc-login` (log in to Work at a Startup once; rerun when the session expires)
+- [x] `scripts/install_task.ps1` (Windows task: first open of the day; `-Live` once live mode is approved;
+  pause/resume with `main.py scheduler off | on | status`)
 
 ## 19a. Scheduling: First Open of the Day
 The pipeline runs automatically the first time the laptop is opened each day, instead of at a fixed time.
@@ -832,39 +899,41 @@ The pipeline runs automatically the first time the laptop is opened each day, in
 
 ## 20. Implementation Phases
 
+Status (2026-10-25): all items built; live mode on. Phase 1 calibration labeling is still in progress.
+
 ### Phase 1 — Discovery + Matching
-- [ ] Repo, config, profile.yaml, SQLite schema + migration runner
-- [ ] Fetchers: HN Who is Hiring, RemoteOK (+ WWR if time)
-- [ ] Normalize + dedupe
-- [ ] Freshness check #1
-- [ ] Eligibility gate + test cases
-- [ ] Claude wrapper + scoring + Pydantic
-- [ ] Local markdown report only
-- [ ] Score calibration: run dry-run for 5-7 days; I label each scored job `would_apply` / `would_not` (column in the markdown report, read back by `python main.py label`). Target ~50 labeled jobs.
+- [x] Repo, config, profile.yaml, SQLite schema + migration runner
+- [x] Fetchers: HN Who is Hiring, RemoteOK (+ WWR if time)
+- [x] Normalize + dedupe
+- [x] Freshness check #1
+- [x] Eligibility gate + test cases
+- [x] Claude wrapper + scoring + Pydantic
+- [x] Local markdown report only
+- [ ] Score calibration (in progress): run dry-run for 5-7 days; I label each scored job `would_apply` / `would_not` (column in the markdown report, read back by `python main.py label`). Target ~50 labeled jobs.
 **Exit criteria:** rerunning creates no duplicates; no ineligible job reaches the shortlist; all eligibility tests pass; on the labeled set, at least ~80% of jobs scored 80+ are `would_apply` and at most ~20% of jobs under 60 are `would_apply`; thresholds adjusted from this data before Phase 2.
 
 ### Phase 2 — Drafting + Gmail
-- [ ] Liveness check (freshness #2)
-- [ ] Drafting prompt + validation; kit markdown files
-- [ ] Google Sheets tracker: create sheet + tabs + dropdowns, upload resumes, append rows, read my Status/Notes/Outcome, retry/queue
-- [ ] Detect applicant-tracking confirmation emails -> mark `applied`
-- [ ] Gmail OAuth (compose + metadata), idempotent drafts with attachment
-- [ ] Daily digest draft
-- [ ] ntfy push notification after each run
-- [ ] Sent reconciliation + company suppression on send
-- [ ] First-open-of-the-day trigger + once-per-day guard (section 19a)
-- [ ] Start recording outcomes from the first sent email
+- [x] Liveness check (freshness #2)
+- [x] Drafting prompt + validation; kit markdown files
+- [x] Google Sheets tracker: create sheet + tabs + dropdowns, upload resumes, append rows, read my Status/Notes/Outcome, retry/queue
+- [x] Detect applicant-tracking confirmation emails -> mark `applied`
+- [x] Gmail OAuth (compose + metadata), idempotent drafts with attachment
+- [x] Daily digest (HTML email to myself)
+- [x] ntfy push notification after each run
+- [x] Sent reconciliation + company suppression on send
+- [x] First-open-of-the-day trigger + once-per-day guard (section 19a)
+- [x] Start recording outcomes from the first sent email
 **Exit criteria:** correct resume attached in every test case; reruns create no duplicate drafts; sent emails detected correctly.
 
 ### Phase 3 — Tracking + Improvement
-- [ ] Stale draft cleanup (freshness #3)
-- [ ] Network tab: YC founder links (via YC scraper), team-page links, search-link fallback, notes + after-accept messages, monthly note budget
-- [ ] Reply detection
-- [ ] Auto-mark `no_response` 21 days after sending with no reply
-- [ ] Weekly stats in Monday digest (incl. reply rate by role type: fde vs others, and pitch variant a vs b)
-- [ ] Tailored resumes (section 11a): LaTeX templates, bullet bank, Tectonic compile, 1-page and fact checks, fallback to standard PDF
-- [ ] Add We Work Remotely if not done
-- [ ] YC scraper (section 7a): Playwright + selector YAML, health checks, snapshot saving, automatic selector repair, manual-fix prompt, auto-disable after 2 failed weeks
+- [x] Stale draft cleanup (freshness #3)
+- [x] Network tab: YC founder links (via YC scraper), team-page links, search-link fallback, one message after they accept (no notes)
+- [x] Reply detection
+- [x] Auto-mark `no_response` 21 days after sending with no reply
+- [x] Weekly stats in Monday digest (incl. reply rate by role type: fde vs others, and pitch variant a vs b)
+- [x] Tailored resumes (section 11a): LaTeX templates, bullet bank, Tectonic compile, 1-page and fact checks, fallback to standard PDF
+- [x] Add We Work Remotely if not done
+- [x] YC scraper (section 7a): Playwright + selector YAML, health checks, snapshot saving, automatic selector repair, manual-fix prompt, auto-disable after 2 failed weeks
 **Exit criteria:** every job traceable from discovery to current status and outcome.
 
 ## 21. Deferred Until After MVP
@@ -888,9 +957,9 @@ The pipeline runs automatically the first time the laptop is opened each day, in
 ## 23. Daily Workflow
 1. First time I open the laptop each day: pipeline runs automatically in the background (a few minutes).
 2. My phone gets an ntfy notification when drafts are ready; tapping it opens Gmail Drafts.
-3. Open Gmail: read the digest draft (scores, reasons, uncertain jobs, count of new portal jobs in the tracker).
+3. Open Gmail: read the digest email (what to send today, changes since yesterday, anything that needs me).
 4. Review the outreach drafts: edit if needed, send or delete.
 5. Open the Job Tracker Google Sheet (laptop or phone): for each `pending` row, open the kit, click the apply link, paste the prepared answers, attach the resume, submit (5-10 minutes each, 2 a day by default; optional, skip on busy days). Set Status to `applied`, or `discarded` if I skip it.
-6. Optional: open the `Network` tab, send 1-3 LinkedIn requests (copy the note), set Status to `requested`; later `connected`, then send the after-accept message.
+6. Optional: open the `Network` tab, send 1-3 LinkedIn requests without a note, set Status to Requested; when they accept, set Connected and send the message.
 7. Next morning's run picks up what was sent, discarded, or replied to.
 8. Occasionally clear old mail from Sent manually (the tool never deletes mail).

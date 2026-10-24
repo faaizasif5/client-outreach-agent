@@ -117,7 +117,8 @@ PORTAL_TRANSITIONS = {
 }
 NETWORK_TRANSITIONS = {
     "to_connect": {"requested", "skipped"},
-    "requested": {"connected", "skipped"},
+    "requested": {"connected", "skipped", "closed"},   # closed: sent, done with it (still counts as contacted)
+    "connected": {"closed"},
 }
 TRANSITIONS = {"direct_email": EMAIL_TRANSITIONS, "application_brief": PORTAL_TRANSITIONS}
 
@@ -170,7 +171,7 @@ def transition_network(conn, network_id: str, new_status: str, now: datetime, so
         conn.execute("UPDATE network SET status=?, updated_at=? WHERE id=?",
                      (new_status, iso(now), network_id))
         _history(conn, "network", network_id, row["status"], new_status, now, source)
-        if new_status == "requested" and row["connection_note"]:
+        if new_status == "requested" and row["is_pitch"]:   # the request is the pitch's first step
             _mark_contacted(conn, row["company_norm"], row["company_domain"], now)
 
 
@@ -208,8 +209,7 @@ def company_block_reason(conn, company_norm: str, company_domain: str | None,
             return f"{outreach_type}:{hit['status']}:{hit['job_key']}"
     hit = conn.execute(
         f"SELECT n.job_key, n.status FROM network n JOIN jobs j ON j.job_key = n.job_key "
-        f"WHERE {_company_match('j')} AND (n.status IN ('requested', 'connected') OR "
-        f"(n.status = 'to_connect' AND COALESCE(n.connection_note, '') != '')) "
+        f"WHERE {_company_match('j')} AND n.is_pitch = 1 AND n.status IN ('to_connect', 'requested', 'connected') "
         f"AND (:exclude IS NULL OR n.job_key != :exclude)", params).fetchone()
     if hit:
         return f"network:{hit['status']}:{hit['job_key']}"
@@ -238,21 +238,23 @@ def create_application(conn, *, job_key: str, outreach_type: str, bucket: str,
         return cur.lastrowid
 
 
-def create_network_entry(conn, *, job_key: str, person_id: int, connection_note: str | None,
-                         now: datetime, after_accept_message: str | None = None) -> str | None:
-    """A network row with a note is outreach and goes through the same company check."""
+def create_network_entry(conn, *, job_key: str, person_id: int, now: datetime, is_pitch: bool = False,
+                         after_accept_message: str | None = None, connection_note: str | None = None) -> str | None:
+    """A LinkedIn row. is_pitch: this row IS the company's outreach (a stretch job pitched on
+    LinkedIn), so it goes through the same one-company check. Requests go out without a note
+    (free-tier limit); connection_note is kept only for older rows."""
+    is_pitch = bool(is_pitch or connection_note)
     with transaction(conn):
         job = get_job(conn, job_key)
-        # The job's own email/kit doesn't block its LinkedIn note; another job's outreach does.
-        if connection_note and company_block_reason(conn, job["company_norm"], job["company_domain"],
-                                                    exclude_job_key=job_key):
+        # The job's own email/kit doesn't block its LinkedIn rows; another job's outreach does.
+        if is_pitch and company_block_reason(conn, job["company_norm"], job["company_domain"],
+                                             exclude_job_key=job_key):
             update_job(conn, job_key, {"status": "suppressed_company"})
             return None
         n = conn.execute("SELECT COUNT(*) FROM network WHERE job_key=?", (job_key,)).fetchone()[0]
         nid = f"{job_key}-{n + 1}"
-        conn.execute("INSERT INTO network (id, job_key, person_id, connection_note, "
-                     "after_accept_message, status, created_at, updated_at) "
-                     "VALUES (?,?,?,?,?,'to_connect',?,?)",
-                     (nid, job_key, person_id, connection_note, after_accept_message,
+        conn.execute("INSERT INTO network (id, job_key, person_id, connection_note, after_accept_message, "
+                     "status, is_pitch, created_at, updated_at) VALUES (?,?,?,?,?,'to_connect',?,?,?)",
+                     (nid, job_key, person_id, connection_note, after_accept_message, int(is_pitch),
                       iso(now), iso(now)))
         return nid

@@ -92,3 +92,42 @@ def test_stale_lock_cleared(tmp_path):
     os.utime(lock, (old, old))
     with schedule.run_lock(lock, 60) as held:
         assert held
+
+
+class FakeSchtasks:
+    """Stands in for schtasks.exe: tracks the task's state, never touches the real scheduler."""
+    def __init__(self, installed=True):
+        self.status, self.calls = ("Ready" if installed else None), []
+
+    def __call__(self, *args):
+        import subprocess
+        self.calls.append(args)
+        if self.status is None:
+            return subprocess.CompletedProcess(args, 1, "", "ERROR: The system cannot find the file specified.")
+        if args[0] == "/Change":
+            self.status = "Ready" if "/ENABLE" in args else "Disabled"
+            return subprocess.CompletedProcess(args, 0, "SUCCESS", "")
+        return subprocess.CompletedProcess(args, 0, f'"\\JobOutreachAgent","N/A","{self.status}"\n', "")
+
+
+def test_scheduler_off_and_on(monkeypatch, capsys):
+    import main
+    fake = FakeSchtasks()
+    monkeypatch.setattr(schedule, "_schtasks", fake)
+    assert main.main(["scheduler", "off"]) == 0
+    assert "JobOutreachAgent: Disabled" in capsys.readouterr().out
+    assert ("/Change", "/TN", "JobOutreachAgent", "/DISABLE") in fake.calls
+    assert main.main(["scheduler"]) == 0                      # status is the default
+    assert "Disabled" in capsys.readouterr().out
+    assert main.main(["scheduler", "on"]) == 0
+    assert "JobOutreachAgent: Ready" in capsys.readouterr().out
+
+
+def test_scheduler_not_installed_and_bad_action(monkeypatch, capsys):
+    import main
+    monkeypatch.setattr(schedule, "_schtasks", FakeSchtasks(installed=False))
+    assert main.main(["scheduler", "status"]) == 0
+    assert "not installed" in capsys.readouterr().out
+    assert main.main(["scheduler", "off"]) == 1
+    assert "install_task.ps1" in capsys.readouterr().out
+    assert main.main(["scheduler", "pause"]) == 2

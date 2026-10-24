@@ -19,8 +19,15 @@ class FakeSheetsApi:
             raise ConnectionError("Sheets API down")
         return {st.APPS: 0, st.KITS: 1, st.NETWORK: 2}
 
-    def read(self, sid, tab):
+    def read(self, sid, tab, formulas=False):
         return [list(r) for r in self.tabs[tab]]
+
+    def ensure_tab(self, sid, tab):
+        self.tabs.setdefault(tab, [list(st.HEADERS[tab])])
+
+    def delete_rows(self, sid, tab, rows):
+        for n in sorted(set(rows), reverse=True):
+            del self.tabs[tab][n - 1]
 
     def append(self, sid, tab, rows, raw=False):
         if self.down:
@@ -62,8 +69,8 @@ def test_flush_appends_kit_then_linked_application(conn):
     out = st.flush_queue(conn, api, "sid", NOW)
     assert out == {"written": 2, "queued": 0, "error": None}
     assert api.row(st.KITS, "p1")[3] == "Hello"
-    assert api.row(st.APPS, "p1")[st.COL["Kit"]] == '=HYPERLINK("#gid=1&range=A2","Kit")'
-    assert api.row(st.APPS, "p1")[st.COL["Status"]] == "pending"
+    assert api.row(st.APPS, "p1")[st.COL["Kit"]].startswith('=HYPERLINK("#gid=1&range=A"&MATCH(')
+    assert api.row(st.APPS, "p1")[st.COL["Status"]] == "Pending"
     assert st.flush_queue(conn, api, "sid", NOW)["written"] == 0     # never re-appended
 
 
@@ -134,7 +141,7 @@ def test_expire_pending_after_7_days_only_status_cell(conn):
     st.flush_queue(conn, api, "sid", NOW)
     assert st.expire_pending(conn, api, "sid", NOW, 7) == 1
     assert status(conn, "old") == "expired" and status(conn, "new") == "pending"
-    assert api.row(st.APPS, "old")[st.COL["Status"]] == "expired"
+    assert api.row(st.APPS, "old")[st.COL["Status"]] == "Expired"
     assert api.updates == [f"{st.APPS}!J2"]
     assert repo.company_block_reason(conn, "acme", None) is None
 
@@ -178,3 +185,157 @@ def test_rebuild_from_sqlite(conn):
     rows = st.rebuild_rows(conn, {})
     assert [t for t, _, _ in rows] == [st.KITS, st.APPS]
     assert rows[1][2][st.COL["Notes"]] == "n1"
+
+
+def test_layout_freezes_one_row_and_sizes_every_column():
+    reqs = st.layout_requests({st.APPS: 0, st.KITS: 1, st.NETWORK: 2, st.ARCHIVE: 3})
+    freezes = [r["updateSheetProperties"]["properties"]["gridProperties"]["frozenRowCount"]
+               for r in reqs if "updateSheetProperties" in r]
+    assert freezes == [1, 1, 1, 1]
+    for tab, gid in ((st.APPS, 0), (st.KITS, 1), (st.NETWORK, 2)):
+        widths = [r for r in reqs if "updateDimensionProperties" in r
+                  and r["updateDimensionProperties"]["range"]["sheetId"] == gid
+                  and r["updateDimensionProperties"]["range"]["dimension"] == "COLUMNS"]
+        assert len(widths) == len(st.HEADERS[tab]) == len(st.LAYOUT[tab])
+    wraps = {r["repeatCell"]["range"]["startColumnIndex"]: r["repeatCell"]["cell"]["userEnteredFormat"]["wrapStrategy"]
+             for r in reqs if "repeatCell" in r and r["repeatCell"]["range"]["sheetId"] == 0
+             and r["repeatCell"]["range"].get("startRowIndex") == 1}
+    assert wraps[st.COL["Why"]] == "WRAP" and wraps[st.COL["Company"]] == "CLIP"
+
+
+def test_append_never_inserts_rows_into_the_frozen_header():
+    calls = {}
+
+    class Values:
+        def append(self, **kw):
+            calls.update(kw)
+            return self
+
+        def execute(self):
+            return {"updates": {"updatedRange": "Kits!A2:F2"}}
+
+    class Sheets:
+        def spreadsheets(self):
+            return self
+
+        def values(self):
+            return Values()
+    api = st.SheetsApi(Sheets(), None, lambda req: req.execute())
+    api.append("sid", st.KITS, [["a"]], raw=True)
+    assert calls["insertDataOption"] == "OVERWRITE"
+
+
+def test_row_height_follows_wrapped_text():
+    short = st.row_height(["id", "Acme", "x", "Short note"], st.LAYOUT[st.KITS])
+    long = st.row_height(["id", "Acme", "x", "word " * 300, "a\nb\nc"], st.LAYOUT[st.KITS])
+    huge = st.row_height(["id", "Acme", "x", "word " * 5000], st.LAYOUT[st.KITS])
+    assert short == 25 and long > 200 and huge == st.MAX_ROW_PX
+    clipped = st.row_height(["x" * 900], st.LAYOUT[st.APPS])        # ID column clips: no growth
+    assert clipped == 25
+
+
+def test_style_is_idempotent_and_colours_statuses():
+    gids = {st.APPS: 0, st.KITS: 1, st.NETWORK: 2}
+    fresh = st.style_requests(gids, {"sheets": [{"properties": {"sheetId": g}} for g in gids.values()]})
+    assert sum(1 for r in fresh if "addBanding" in r) == 3
+    assert not any("deleteConditionalFormatRule" in r for r in fresh)
+    status_rules = [r for r in fresh if "addConditionalFormatRule" in r
+                    and r["addConditionalFormatRule"]["rule"].get("booleanRule", {}).get("condition", {}).get("type") == "TEXT_EQ"
+                    and r["addConditionalFormatRule"]["rule"]["ranges"][0]["sheetId"] == 0
+                    and r["addConditionalFormatRule"]["rule"]["ranges"][0]["startColumnIndex"] == st.COL["Status"]]
+    assert {r["addConditionalFormatRule"]["rule"]["booleanRule"]["condition"]["values"][0]["userEnteredValue"]
+            for r in status_rules} == {st.label(v) for v in st.STATUS}
+    # Second run: existing banding kept, old rules removed before re-adding (no pile-up)
+    meta = {"sheets": [{"properties": {"sheetId": g}, "bandedRanges": [{"bandedRangeId": 1}],
+                        "conditionalFormats": [{}] * 5} for g in gids.values()]}
+    again = st.style_requests(gids, meta)
+    assert not any("addBanding" in r for r in again)
+    assert sum(1 for r in again if "deleteConditionalFormatRule" in r) == 15
+
+
+
+# ---------------------------------------------------------------- auto-archive
+
+def network_row(conn, api, key="n1", company="acme", status="to_connect", note="Hi"):
+    from tests.conftest import make_job as mj
+    mj(conn, job_key=key, company=company.title(), company_norm=company)
+    conn.execute("INSERT OR IGNORE INTO people (company_norm, name, title, source, verified, fetched_at) "
+                 "VALUES (?,?,?,?,?,?)", (company, "Sam", "Founder", "yc_page", 1, repo.iso(NOW)))
+    pid = conn.execute("SELECT id FROM people WHERE company_norm=?", (company,)).fetchone()[0]
+    nid = repo.create_network_entry(conn, job_key=key, person_id=pid, connection_note=note, now=NOW)
+    row = dict(conn.execute("SELECT n.*, p.name, p.title, p.linkedin_url, p.source, p.verified FROM network n "
+                            "JOIN people p ON p.id=n.person_id WHERE n.id=?", (nid,)).fetchone())
+    api.tabs[st.NETWORK].append(st.network_row(row, {"company": company.title()}, "LinkedIn pitch"))
+    if status != "to_connect":
+        api.row(st.NETWORK, nid)[st.NET_COL["Status"]] = status
+    return nid
+
+
+def test_discarded_and_skipped_rows_move_to_archive(conn):
+    api = FakeSheetsApi()
+    portal(conn, "p1", "acme")
+    portal(conn, "p2", "globex")
+    st.flush_queue(conn, api, "sid", NOW)
+    n_skip = network_row(conn, api, "n1", "initech", status="skipped")
+    n_keep = network_row(conn, api, "n2", "hooli", status="to_connect")
+    api.row(st.APPS, "p1")[st.COL["Status"]] = "discarded"
+    api.row(st.APPS, "p1")[st.COL["Notes"]] = "not interested"
+    st.sync_from_sheet(conn, api, "sid", NOW)
+    st.sync_network(conn, api, "sid", NOW)
+    out = st.archive_rows(conn, api, "sid", NOW)
+    assert out == {"archived": 2}
+    assert [r[0] for r in api.tabs[st.APPS][1:]] == ["p2"]                 # in-progress row stays
+    assert [r[0] for r in api.tabs[st.KITS][1:]] == ["p2"]                 # its kit went with it
+    assert [r[0] for r in api.tabs[st.NETWORK][1:]] == [n_keep]
+    archived = {r[2]: r for r in api.tabs[st.ARCHIVE][1:]}
+    assert archived["p1"][1] == st.APPS and archived["p1"][5] == "Not interested" and archived["p1"][7] == "not interested"
+    assert archived[n_skip][1] == st.NETWORK and archived[n_skip][5] == "Skipped"
+    assert st.archive_rows(conn, api, "sid", NOW) == {"archived": 0}         # nothing moved twice
+
+
+def test_closed_linkedin_row_archived_and_company_stays_contacted(conn):
+    api = FakeSheetsApi()
+    nid = network_row(conn, api, "n1", "acme")
+    api.row(st.NETWORK, nid)[st.NET_COL["Status"]] = "requested"
+    st.sync_network(conn, api, "sid", NOW)
+    api.row(st.NETWORK, nid)[st.NET_COL["Status"]] = "closed"
+    st.sync_network(conn, api, "sid", NOW)
+    assert conn.execute("SELECT status FROM network WHERE id=?", (nid,)).fetchone()[0] == "closed"
+    assert repo.is_company_contacted(conn, "acme", None)                   # the outreach happened
+    assert st.archive_rows(conn, api, "sid", NOW) == {"archived": 1}
+
+
+def test_closing_an_unsent_request_is_a_skip(conn):
+    api = FakeSheetsApi()
+    nid = network_row(conn, api, "n1", "acme")
+    api.row(st.NETWORK, nid)[st.NET_COL["Status"]] = "closed"
+    st.sync_network(conn, api, "sid", NOW)
+    assert conn.execute("SELECT status FROM network WHERE id=?", (nid,)).fetchone()[0] == "skipped"
+    assert not repo.is_company_contacted(conn, "acme", None)
+    assert repo.company_block_reason(conn, "acme", None) is None           # free for future outreach
+
+
+def test_rejected_outcome_is_archived(conn):
+    api = FakeSheetsApi()
+    portal(conn, "p1", "acme")
+    st.flush_queue(conn, api, "sid", NOW)
+    api.row(st.APPS, "p1")[st.COL["Status"]] = "applied"
+    api.row(st.APPS, "p1")[st.COL["Outcome"]] = "rejected"
+    st.sync_from_sheet(conn, api, "sid", NOW)
+    assert st.archive_rows(conn, api, "sid", NOW) == {"archived": 1}
+
+
+
+@pytest.mark.parametrize("shown,key", [("To connect", "to_connect"), ("to_connect", "to_connect"),
+                                       ("Not interested", "discarded"), ("discarded", "discarded"),
+                                       (" Applied ", "applied"), ("Interview", "interview"), ("", "")])
+def test_sheet_labels_map_back_to_status_keys(shown, key):
+    assert st.to_key(shown) == key
+
+
+def test_friendly_status_typed_in_sheet_syncs(conn):
+    api = FakeSheetsApi()
+    portal(conn)
+    st.flush_queue(conn, api, "sid", NOW)
+    api.row(st.APPS, "p1")[st.COL["Status"]] = "Not interested"
+    assert st.sync_from_sheet(conn, api, "sid", NOW)["discarded"] == 1

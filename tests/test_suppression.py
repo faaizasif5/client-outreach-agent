@@ -58,17 +58,17 @@ def _person(conn):
     return conn.execute("SELECT id FROM people").fetchone()[0]
 
 
-@pytest.mark.parametrize("status,note,blocked", [
-    ("to_connect", "Hi Sara, saw the backend role...", True),
-    ("to_connect", None, False),          # plain connect without note is not outreach
-    ("requested", None, True),
-    ("connected", None, True),
-    ("skipped", "Hi Sara", False),
+@pytest.mark.parametrize("status,is_pitch,blocked", [
+    ("to_connect", True, True),          # a LinkedIn pitch reserves its company (no note needed)
+    ("to_connect", False, False),        # a plain connect next to an email/kit is not outreach
+    ("requested", True, True),
+    ("requested", False, False),
+    ("connected", True, True),
+    ("skipped", True, False),
 ])
-def test_linkedin_pitch_blocks_other_channels(conn, status, note, blocked):
+def test_linkedin_pitch_blocks_other_channels(conn, status, is_pitch, blocked):
     make_job(conn, job_key="n1")
-    nid = repo.create_network_entry(conn, job_key="n1", person_id=_person(conn),
-                                    connection_note=note, now=NOW)
+    nid = repo.create_network_entry(conn, job_key="n1", person_id=_person(conn), is_pitch=is_pitch, now=NOW)
     conn.execute("UPDATE network SET status=? WHERE id=?", (status, nid))
     assert bool(repo.company_block_reason(conn, "acme", None)) is blocked
     assert (_email(conn, "e1") is None) is blocked

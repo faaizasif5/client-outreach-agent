@@ -51,15 +51,3 @@ def test_team_page_fetched_once_per_company(conn):
     assert all("linkedin.com" not in c for c in http.calls)
     assert set(people.verified_profile_links(conn, "acme")) == {
         "https://www.linkedin.com/in/sara-khan", "https://linkedin.com/in/lee-wong"}
-
-
-def test_note_budget_counts_only_requested_with_note(conn):
-    make_job(conn, job_key="j1")
-    conn.execute("INSERT INTO people (company_norm, name, source, verified, fetched_at) VALUES ('acme','A','team_page',1,?)",
-                 (repo.iso(NOW),))
-    pid = conn.execute("SELECT id FROM people").fetchone()[0]
-    for n, (status, note) in enumerate([("requested", "Hi"), ("requested", None), ("to_connect", "Hi"),
-                                        ("connected", "Hi")]):
-        conn.execute("INSERT INTO network (id, job_key, person_id, connection_note, status, created_at, updated_at) "
-                     "VALUES (?,?,?,?,?,?,?)", (f"j1-{n}", "j1", pid, note, status, repo.iso(NOW), repo.iso(NOW)))
-    assert people.notes_used_this_month(conn, NOW) == 3   # planned to_connect notes count too

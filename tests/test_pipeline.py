@@ -47,6 +47,9 @@ class FakeClaude:
                 otype = re.search(r"outreach_type: (\w+)", block).group(1)
                 bucket = re.search(r"bucket: (\w+)", block).group(1)
                 mode = re.search(r"network: (\w+)", block).group(1)
+                mention_line = re.search(r"mention: (.+)", block)
+                mention = [] if not mention_line or mention_line.group(1) == "none" else mention_line.group(1).split(", ")
+                stack_bit = f" I work with {', '.join(mention[:2])}." if mention else ""
                 tailored = None
                 if "tailor: yes" in block:
                     rkey = re.search(r"resume: (\w+)", block).group(1)
@@ -54,20 +57,21 @@ class FakeClaude:
                     tailored = {"resume_key": rkey, "summary": self.tailor_summary,
                                 "bullet_ids": ids[::-1][:3], "skills_first": ["Django"]}
                 network = None if mode == "none" else {
-                    "connection_note": ("Hi Sam, saw the backend role. I'm a full-stack engineer in Pakistan "
-                                        "who has worked US hours. Open to a contractor alternative?")
-                    if mode in ("note", "pitch") else None,
-                    "after_accept_message": "Thanks for connecting! Happy to share more about my Django work."}
+                    "connection_note": None,
+                    "after_accept_message": ("Thanks for connecting, {first_name}." + stack_bit +
+                                             " I move across the stack with agentic coding in Claude Code. "
+                                             "I know you're hiring in the US and I'm in Pakistan; up for a quick call?")
+                    if mode == "pitch" else ("Thanks for connecting, {first_name}!" + stack_bit)}
                 if otype == "network_pitch":
                     results.append({"job_key": key, "outreach_type": otype, "subject": None, "body": "",
                                     "network": network})
                 elif otype == "direct_email":
                     results.append({"job_key": key, "outreach_type": otype, "subject": "Backend role",
-                                    "body": EMAIL_BODY if bucket == "eligible" else STRETCH_BODY,
+                                    "body": (EMAIL_BODY if bucket == "eligible" else STRETCH_BODY) + stack_bit,
                                     "network": network, "tailored": tailored})
                 else:
                     results.append({"job_key": key, "outreach_type": otype, "subject": None, "body": "",
-                                    "kit": {"cover_note": "I build Django APIs.", "form_answers": [
+                                    "kit": {"cover_note": "I build Django APIs." + stack_bit, "form_answers": [
                                         {"question": "Why us?", "answer": "The product fits my Django work."}]},
                                     "network": network, "tailored": tailored})
             return schema.model_validate({"results": results}), usage

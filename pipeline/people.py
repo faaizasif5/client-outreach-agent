@@ -139,16 +139,3 @@ def verified_profile_links(conn, company_norm: str) -> list[str]:
     return [r["linkedin_url"] for r in conn.execute(
         "SELECT linkedin_url FROM people WHERE company_norm=? AND verified=1 AND linkedin_url LIKE '%linkedin.com/in/%'",
         (company_norm,))]
-
-
-def notes_used_this_month(conn, now) -> int:
-    """Notes sent this month (requested/connected) plus notes already planned this month
-    (to_connect with a note), so the budget is never over-allocated across days."""
-    from pipeline.schedule import PKT
-    month = now.astimezone(PKT).strftime("%Y-%m")
-    rows = conn.execute("SELECT status, created_at, updated_at FROM network WHERE "
-                        "status IN ('to_connect','requested','connected') AND COALESCE(connection_note,'') != ''").fetchall()
-    def in_month(r):
-        stamp = r["created_at"] if r["status"] == "to_connect" else r["updated_at"]
-        return repo.parse_iso(stamp).astimezone(PKT).strftime("%Y-%m") == month
-    return sum(1 for r in rows if in_month(r))

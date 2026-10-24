@@ -23,8 +23,8 @@ def compose(counts: dict) -> dict:
     if replies:
         parts.append(f"New reply on {_plural(replies, 'outreach email')}.")
     if drafts or kits:
-        parts.append(f"{_plural(drafts, 'draft')} ready + {_plural(kits, 'new portal job')} in the tracker. "
-                     f"{_plural(review, 'job')} to review.")
+        parts.append(f"{_plural(drafts, 'draft')} ready + {_plural(kits, 'new portal job')} in the tracker."
+                     + (f" {_plural(review, 'job')} to review." if review else ""))
     if counts.get("pitches_created"):
         n = counts["pitches_created"]
         parts.append(f"{n} LinkedIn pitch{'' if n == 1 else 'es'} in the Network tab.")

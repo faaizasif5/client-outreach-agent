@@ -13,6 +13,7 @@ from db import repo
 from outputs import drafts as gmail_drafts
 from outputs import sheets_tracker as st
 from pipeline import drafter, freshness, people as people_mod, resume_builder
+from pipeline import stack as stack_mod
 from pipeline.claude_cli import run_claude
 from schemas.ai_output import FormAnswer
 
@@ -73,12 +74,10 @@ def write_dry_run_file(folder: Path, n: int, job: dict, draft, meta: dict) -> Pa
         lines += ["## Standard fields (copy-paste)", "", "```", meta["standard_fields"], "```", ""]
     if draft.network:
         lines += [f"## LinkedIn (network: {meta.get('network_mode')})", ""]
-        for i, p in enumerate(meta.get("people") or []):
+        for p in meta.get("people") or []:
             lines.append(f"- {p['name']} ({p.get('title')}), {p.get('linkedin_url')} "
-                         f"[{p['source']}, {'verified' if p.get('verified') else 'check'}]")
-            note = draft.network.connection_note if i == 0 else None
-            lines.append(f"  - Connection note ({len(note)} chars): {note}" if note else "  - Connect without a note")
-        lines += ["", "After they accept:", "", draft.network.after_accept_message, ""]
+                         f"[{p['source']}, {'verified' if p.get('verified') else 'check'}]: connect without a note")
+        lines += ["", "Message to send after they accept:", "", draft.network.after_accept_message, ""]
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -108,6 +107,8 @@ def pre_sync(conn, google: dict, cfg: dict, now: datetime, http=None, fetched_so
             conn, gmail.recent_inbox_headers(), cfg["outreach"]["ats_confirmation"], now)),
         ("expired_kits", lambda: st.expire_pending(conn, api, sid, now, cfg["outreach"]["pending_kit_days"])),
         ("network_sync", lambda: st.sync_network(conn, api, sid, now)),
+        ("archived", lambda: st.archive_rows(conn, api, sid, now) if cfg.get("sheets", {}).get("auto_archive", True)
+         else {"archived": 0}),
         ("sheet_queue", lambda: st.flush_queue(conn, api, sid, now)),   # rows queued by an earlier run
     ]
     for name, step in steps:
@@ -119,6 +120,25 @@ def pre_sync(conn, google: dict, cfg: dict, now: datetime, http=None, fetched_so
     return out
 
 
+
+
+def first_name(person: dict) -> str:
+    name = (person.get("name") or "").strip()
+    return "there" if not name or name.startswith("(") else name.split()[0]
+
+
+def personalize(text: str | None, person: dict, everyone: list[dict]) -> str | None:
+    """Fill {first_name} with this person's name. If Claude wrote a real name instead, swap any
+    other person's first name for this one, so nobody gets a message addressed to someone else."""
+    if not text:
+        return text
+    mine = first_name(person)
+    text = text.replace("{first_name}", mine)
+    for other in everyone:
+        theirs = first_name(other)
+        if theirs not in (mine, "there"):
+            text = re.sub(rf"\b{re.escape(theirs)}\b", mine, text)
+    return text
 
 
 def _done(conn, item: dict, live: bool):
@@ -135,7 +155,7 @@ def _created_today(conn, route: str, live: bool, now: datetime) -> int:
         return _today_count(conn, "dry_run_drafts", TYPE[route], now)
     if route == "network":
         today = now.astimezone(PKT).date()
-        rows = conn.execute("SELECT created_at FROM network WHERE COALESCE(connection_note,'') != ''").fetchall()
+        rows = conn.execute("SELECT created_at FROM network WHERE is_pitch = 1").fetchall()
         return sum(1 for r in rows if repo.parse_iso(r["created_at"]).astimezone(PKT).date() == today)
     return _today_count(conn, "applications", TYPE[route], now)
 
@@ -193,6 +213,10 @@ def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetim
         if status == "unknown":
             out["unknown"].append((item, why))
             continue
+        if status == "gated":   # job board wants a sign-up/payment to apply: never pay, apply on the company site
+            repo.update_job(conn, item["job_key"], {"eligibility": "uncertain", "eligibility_reason": "gated_apply_link"})
+            out.setdefault("gated", []).append(item)
+            continue
         found = gather_people(conn, http, item, now)
         if item["route"] == "network" and not found:
             out["network_waiting"].append(item)
@@ -205,23 +229,16 @@ def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetim
         tailor = (item["route"] != "network" and item["fit_score"] >= cfg["tailoring"]["min_fit"]
                   and resume_builder.available(item["resume_key"]))
         targets.append(dict(item, outreach_type=TYPE[item["route"]], form_questions=questions,
-                            pitch_variant=None, people=found, tailor=tailor))
+                            pitch_variant=None, people=found, tailor=tailor,
+                            stack=stack_mod.match(f"{item['title']}\n{item.get('description') or ''}", profile, cfg)))
 
-    # Monthly LinkedIn note budget: pitches first (the note is their only message), then portal jobs by fit.
-    notes_left = cfg["linkedin_notes_per_month"] - people_mod.notes_used_this_month(conn, now)
-    for t in sorted(targets, key=lambda t: (t["route"] != "network", -t["fit_score"])):
+    # LinkedIn requests go out without a note (free-tier limit), so there is no note budget: each
+    # row gets one message for after they accept.
+    for t in targets:
         if not t["people"]:
             t["network_mode"] = "none"
-        elif t["route"] == "email":
-            t["network_mode"] = "after_accept_only"       # emailed: plain connect, no double outreach
-        elif notes_left > 0:
-            t["network_mode"] = "pitch" if t["route"] == "network" else "note"
-            notes_left -= 1
         else:
-            t["network_mode"] = "after_accept_only"
-    for t in [t for t in targets if t["route"] == "network" and t["network_mode"] != "pitch"]:
-        targets.remove(t)
-        out["network_waiting"].append(t)                  # no note budget left this month
+            t["network_mode"] = {"email": "after_accept_only", "portal": "applied", "network": "pitch"}[t["route"]]
     variant = next_variant(conn)
     for t in targets:   # stretch pitches alternate a/b (price-mention test)
         if t["bucket"] != "eligible":
@@ -293,7 +310,8 @@ def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetim
             app = dict(conn.execute("SELECT * FROM applications WHERE id=?", (app_id,)).fetchone())
             st.enqueue(conn, st.KITS, key, st.kit_row(job, payload["kit"], standard), now)
             st.enqueue(conn, st.APPS, key, st.application_row(
-                job, app, job["fit_score"], job["reason"], (google.get("resume_links") or {}).get(job["resume_key"]),
+                job, app, job["fit_score"], " · ".join(x for x in (job["reason"], job["stack"].summary()) if x),
+                (google.get("resume_links") or {}).get(job["resume_key"]),
                 "__KIT__"), now)
             out["created"].append({"item": job, "status": "pending"})
             out["kits_created"] += 1
@@ -302,10 +320,10 @@ def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetim
             linked = "LinkedIn pitch"
         if d.network:
             created_any = False
-            for i, person in enumerate(job["people"]):
-                note = d.network.connection_note if i == 0 else None   # one note per job (budget)
-                nid = repo.create_network_entry(conn, job_key=key, person_id=person["id"], connection_note=note,
-                                                now=now, after_accept_message=d.network.after_accept_message)
+            for person in job["people"]:
+                nid = repo.create_network_entry(
+                    conn, job_key=key, person_id=person["id"], now=now, is_pitch=job["route"] == "network",
+                    after_accept_message=personalize(d.network.after_accept_message, person, job["people"]))
                 created_any = created_any or bool(nid)
             if created_any:
                 _network_sheet_rows(conn, job, now, linked)

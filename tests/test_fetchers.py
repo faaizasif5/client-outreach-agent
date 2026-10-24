@@ -92,3 +92,13 @@ def test_wwr_parse():
     assert jobs[0].location_text == "Remote (Anywhere in the World)"
     assert jobs[0].external_id == "cloudy-full-stack-engineer"
     assert jobs[0].posted_at == datetime(2026, 10, 23, 7, 31, 3, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("Sothebyâ\u0080\u0099s", "Sotheby’s"),     # double-encoded UTF-8 from the API
+    ("Ledger &amp; Co", "Ledger & Co"),
+    ("Café", "Café"),                            # already fine: untouched
+    ("Plain", "Plain"),
+])
+def test_remoteok_text_repair(raw, expected):
+    assert remoteok.fix_text(raw) == expected

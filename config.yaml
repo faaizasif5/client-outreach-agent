@@ -18,7 +18,8 @@ stretch_min_fit: 70
 stretch_max_team_size: 100
 pitch_explicit_us_only: true
 offer_paid_trial: false
-linkedin_notes_per_month: 5   # set to your real free-account limit (Phase 3)
+# LinkedIn connection requests go out WITHOUT a note (free tier allows only a few a month); the pitch
+# is one message sent after they accept. No note budget needed.
 
 # Scoring (section 10)
 scoring:
@@ -248,7 +249,7 @@ drafting:
 outreach:
   # Safety switch. false = drafts/kits go to reports/dry-run/ only, even without --dry-run.
   # Flip to true after calibration (Phase 1 exit criteria) and your approval.
-  live_enabled: false
+  live_enabled: true           # approved by you on 2026-10-24
   attachment_filename: Resume.pdf
   pending_kit_days: 7          # portal rows still pending after this -> expired
   complete_feeds: [wwr]        # feeds that list every active job (disappearing = closed)
@@ -281,3 +282,69 @@ tailoring:
   compiler: tools/tectonic/tectonic.exe
 yc:
   repair_model: sonnet         # only used when the scraper is broken (max once a week)
+digest:
+  delivery: send               # send = HTML email to yourself each run | draft = Gmail draft (spec default)
+sheets:
+  auto_archive: true           # finished rows (discarded/expired/rejected, LinkedIn skipped/closed) -> Archive tab
+
+# ---------------------------------------------------------------- stack matching
+# Technology -> how it appears in text (regex, case-insensitive; (?-i:...) for case-sensitive).
+# Used to read a listing's stack, map your profile skills, and check every draft names only
+# technologies you have.
+stack:
+  vocab:
+    python: ['python']
+    typescript: ['typescript', '\bts\b']
+    javascript: ['javascript', '(?<![.\w])js\b']
+    react: ['react(\.js)?(?![- ]native)']
+    react native: ['react[- ]native']
+    next.js: ['next\.?js', '\bnext\b(?=\s*(,|/|and|or)\s)']
+    vue: ['vue(\.js)?']
+    angular: ['angular(js)?']
+    node.js: ['node(\.js|js)?\b']
+    nestjs: ['nest\.?js']
+    django: ['django(?![- ]rest)']
+    django rest framework: ['django[- ]rest[- ]framework', '\bdrf\b']
+    fastapi: ['fast ?api']
+    flask: ['flask']
+    rest apis: ['rest(ful)?[- ]apis?']
+    graphql: ['graphql']
+    sql: ['\bsql\b']
+    postgresql: ['postgres(ql)?']
+    mysql: ['mysql']
+    mongodb: ['mongo(db)?']
+    redis: ['redis']
+    aws: ['\baws\b', 'amazon web services']
+    gcp: ['\bgcp\b', 'google cloud']
+    azure: ['azure']
+    docker: ['docker']
+    kubernetes: ['kubernetes', '\bk8s\b']
+    terraform: ['terraform']
+    ci/cd: ['ci/cd', '\bci\b']
+    llm apis: ['\bllms?\b', 'large language models?', 'openai', '\bgpt', 'gemini', 'anthropic', 'claude api']
+    rag: ['\brag\b', 'retrieval[- ]augmented']
+    vector search: ['pgvector', 'pinecone', 'vector (database|db|search)']
+    ai agents: ['ai[- ]agents?', 'agentic(?! coding)']
+    langchain: ['langchain']
+    claude code: ['claude code', 'agentic coding']
+    go: ['golang', '(?-i:\bGo\b)(?=\s*(,|/|\)|and\b|or\b))', '(?<=\w[ (/])(?-i:Go\b)']   # capital "Go" mid-sentence
+    rust: ['\brust\b']
+    java: ['\bjava\b(?!script)']
+    kotlin: ['kotlin']
+    swift: ['\bswift\b']
+    ruby: ['\bruby\b', 'rails']
+    php: ['\bphp\b']
+    c#: ['c#']
+    .net: ['(?<![\w])\.net\b']
+    c++: ['c\+\+']
+    kafka: ['kafka']
+    spark: ['\bspark\b']
+    airflow: ['airflow']
+    dbt: ['\bdbt\b']
+    snowflake: ['snowflake']
+    pytorch: ['pytorch']
+    tensorflow: ['tensorflow']
+    firebase: ['firebase']
+    mapbox: ['mapbox']
+  mention_max: 4               # technologies from their stack the message should lean on
+  max_unasked: 2               # technologies a draft may name that the listing didn't ask for
