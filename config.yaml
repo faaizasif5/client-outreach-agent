@@ -156,6 +156,8 @@ eligibility:
     - '\bwork from home\b'
     - '\bwfh\b'
     - '\bwork from anywhere\b'
+    - '\banywhere\b'
+    - '\bworld\s?wide\b'
   worldwide:
     - '\bworld\s?wide\b'
     - '\banywhere\b(?! in (the )?(us|u\.s\.?|usa|united states|north america|americas|europe|eu|canada|uk|latam))'
