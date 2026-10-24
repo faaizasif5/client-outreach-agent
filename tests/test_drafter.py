@@ -156,10 +156,11 @@ def test_draft_jobs_claude_failure(profile, cfg):
 
 # ---------------------------------------------------------------- Network tab notes (Phase 3)
 
-PITCH_MSG = ("Hi {first_name}, thanks for connecting! What you're building caught my attention.\n\n"
-             "I'm a software engineer based in Pakistan, working across React and Django, and I use Claude Code "
-             "to move quickly from idea to implementation.\n\n"
-             "I'd love to hear more about what you're building. Happy to chat whenever it suits you.")
+PITCH_MSG = ("Hi {first_name}, thanks for connecting! Scheduling for clinics is an interesting problem.\n\n"
+             "I saw you're hiring engineers. I'm a software engineer based in Pakistan, working with React and "
+             "Django, and I use Claude Code to move quickly from idea to working code.\n\n"
+             "Curious: is the booking flow the main focus for the team right now?")
+PITCH_QUESTION = "Curious: is the booking flow the main focus for the team right now?"
 
 
 def test_network_pitch_is_one_message_and_notes_are_dropped(profile, cfg):
@@ -182,14 +183,23 @@ def test_network_pitch_is_one_message_and_notes_are_dropped(profile, cfg):
 @pytest.mark.parametrize("ending,expected", [
     ("Up for a quick call sometime?", "not ask for a call"),
     ("Would a short meeting work?", "not ask for a call"),
-    ("I overlap with US hours.", "no contractor terms"),
-    ("I work well as a contractor.", "no contractor terms"),
+    ("I overlap with US hours. " + PITCH_QUESTION, "no contractor terms"),
+    ("I work well as a contractor. " + PITCH_QUESTION, "no contractor terms"),
+    (PITCH_QUESTION + " I'd be interested in whether I could be a fit.", "end with one question"),
+    (PITCH_QUESTION + " Also, " + "really " * 30 + "keen?", "too long"),
 ])
 def test_linkedin_pitch_opens_a_conversation(profile, cfg, ending, expected):
     j = job(outreach_type="network_pitch", bucket="us_auth_stretch", network_mode="pitch")
     d = Draft(job_key="k1", outreach_type="network_pitch",
-              network={"after_accept_message": PITCH_MSG.replace("Happy to chat whenever it suits you.", ending)})
+              network={"after_accept_message": PITCH_MSG.replace(PITCH_QUESTION, ending)})
     assert any(expected in p for p in problems(d, j, profile, cfg))
+
+
+def test_linkedin_pitch_says_they_are_hiring(profile, cfg):
+    j = job(outreach_type="network_pitch", bucket="us_auth_stretch", network_mode="pitch")
+    d = Draft(job_key="k1", outreach_type="network_pitch",
+              network={"after_accept_message": PITCH_MSG.replace("I saw you're hiring engineers. ", "")})
+    assert any("hiring" in p for p in problems(d, j, profile, cfg))
 
 
 def test_connection_note_over_200_chars_rejected():

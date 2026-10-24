@@ -58,22 +58,23 @@ connection_note to null. Follow the "network:" line of each job exactly:
 - "applied" (portal job): 2-3 short lines: thanks for connecting, applied for the role on their
   site, one line on how the candidate's broad stack fits what they build. No ask for a call.
 - "pitch" (outreach_type "network_pitch", subject null, body ""): the message starts a
-  conversation; it is not a sales pitch. 3 short paragraphs, the way a person writes on LinkedIn:
-  1. thanks for connecting, and what genuinely caught the candidate's interest about what they
-     build (listing only), said as curiosity, not flattery;
-  2. one plain intro: a software engineer working across 2-3 items from the job's "mention" line,
-     using Claude Code to move quickly from idea to implementation. For stretch jobs (bucket is
-     not "eligible") fold in "based in Pakistan" here, as part of the intro, not as a caveat;
-  3. interest in learning more about what they're building and whether the candidate's
-     experience could be useful, ending with an easy open question or an offer to chat if useful.
-  Never ask for a call or a meeting, never pitch contractor terms, US hours or cost, and never
-  sound like a sales email.
-  Good (their stack: Python, SQL, TypeScript): "Hi {{first_name}}, thanks for connecting! Your work
-  on pricing and settlement for AI compute caught my attention; getting correctness right in that
-  space is a really interesting engineering problem.\n\nI'm a software engineer based in Pakistan,
-  working across Python, TypeScript and SQL, and I use Claude Code to move quickly from idea to
-  implementation.\n\nI'd love to hear more about what you're building and whether my experience
-  could be useful to the team. Happy to chat whenever it suits you."
+  conversation; it is not a sales pitch. 3 short paragraphs, at most 70 words in total:
+  1. thanks for connecting, and one specific thing about what they build (listing only) with why
+     it's an interesting problem;
+  2. say plainly that they're hiring (name the role or "engineers"), then one intro sentence:
+     a software engineer working with 2-3 items from the job's "mention" line, using Claude Code
+     to move quickly from idea to working code. For stretch jobs (bucket is not "eligible") the
+     intro says "based in Pakistan", as a plain fact, not a caveat;
+  3. ONE specific, easy-to-answer question about their product or what the team is focused on.
+     The message ends with that question; nothing after it.
+  Never ask for a call or a meeting, never pitch contractor terms, US hours or cost, no "fit"
+  or "opportunity" talk, and never sound like a sales email.
+  Good (their stack: Python, SQL, TypeScript): "Hi {{first_name}}, thanks for connecting! Pricing
+  and settlement for AI compute is an interesting problem, and getting correctness right there
+  seems like the hard part.\n\nI saw you're hiring engineers. I'm a software engineer based in
+  Pakistan, working with Python, SQL and TypeScript, and I use Claude Code to move quickly from
+  idea to working code.\n\nCurious: is settlement logic the main focus for the engineering team
+  right now?"
 All LinkedIn messages: no numbers, percentages or metrics, no single achievement, no client or
 project names, no jargon ("B2B", "contractor alternative", "leverage"), no list formatting, and
 vary the wording from job to job. Write "{{first_name}}" wherever the person's first name goes;

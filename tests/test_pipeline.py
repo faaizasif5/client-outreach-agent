@@ -59,8 +59,8 @@ class FakeClaude:
                 network = None if mode == "none" else {
                     "connection_note": None,
                     "after_accept_message": ("Thanks for connecting, {first_name}." + stack_bit +
-                                             " I'm based in Pakistan and use Claude Code to move quickly. "
-                                             "I'd love to hear more about what you're building.")
+                                             " I saw you're hiring. I'm based in Pakistan and use Claude Code "
+                                             "to move quickly. What is the team focused on right now?")
                     if mode == "pitch" else ("Thanks for connecting, {first_name}!" + stack_bit)}
                 if otype == "network_pitch":
                     results.append({"job_key": key, "outreach_type": otype, "subject": None, "body": "",

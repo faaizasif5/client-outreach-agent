@@ -124,6 +124,24 @@ def _own_links(profile: dict) -> set[str]:
     return {_norm_link(v) for v in values if v and v != "..."}
 
 
+PITCH_MAX_WORDS = 75   # the prompt asks for 70; a little slack so one extra word isn't a rejection
+
+
+def pitch_shape_problems(msg: str) -> list[str]:
+    """A LinkedIn pitch says they're hiring, stays short and ends on one question about their work."""
+    msg = msg.strip()
+    if not msg:
+        return []
+    problems = []
+    if len(msg.split()) > PITCH_MAX_WORDS:
+        problems.append(f"LinkedIn pitch too long ({len(msg.split())} words, max {PITCH_MAX_WORDS})")
+    if not re.search(r"\bhiring\b", msg, re.I):
+        problems.append("LinkedIn pitch should say plainly that they're hiring")
+    if not msg.endswith("?"):
+        problems.append("LinkedIn pitch should end with one question about their work")
+    return problems
+
+
 def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
     """Problems that make a draft unusable. Empty list = accepted."""
     problems = []
@@ -139,6 +157,7 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
             problems.append("LinkedIn pitch for a stretch job must say the candidate is based in Pakistan")
         elif re.search(r"\bcontract(or|ing)\b|\bUS hours\b|\bcost\b", d.network.after_accept_message, re.I):
             problems.append("LinkedIn pitch starts a conversation: no contractor terms, US hours or cost")
+        problems += pitch_shape_problems(d.network.after_accept_message if d.network else "")
     elif job["outreach_type"] == "direct_email":
         if not (d.subject and d.body.strip()):
             problems.append("missing subject or body")
