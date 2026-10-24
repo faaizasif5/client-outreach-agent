@@ -58,4 +58,4 @@ Resume PDFs go in `candidate/resumes/` (a key with no PDF falls back to `fullsta
 - Only the libraries in spec section 4. No frameworks, no vector DBs.
 - Tests use saved fixtures in `tests/fixtures/`, never live sites.
 - Be polite to sources: 2-3 s between requests per host, on-disk cache in `data/cache/`.
-- Commit after each completed task.
+- Work on the `dev` branch. Do not commit yourself: at the end of each task, give the user a commit message to run.

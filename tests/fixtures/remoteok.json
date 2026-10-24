@@ -1,0 +1,77 @@
+[
+ {
+  "last_updated": "1792800002",
+  "legal": "API Terms of Service: Please link back to the URL on Remote OK and mention Remote OK as a source."
+ },
+ {
+  "slug": "remote-501",
+  "id": "501",
+  "company": "Acme Labs",
+  "position": "Senior Backend Engineer",
+  "tags": [
+   "python",
+   "django"
+  ],
+  "description": "<p>Django REST Framework, PostgreSQL, Redis.</p>",
+  "location": "Worldwide",
+  "url": "https://remoteOK.com/remote-jobs/remote-501",
+  "apply_url": "https://jobs.ashbyhq.com/acmelabs/11111111-2222-3333-4444-555555555555?utm_source=remoteok",
+  "epoch": "1792569600",
+  "date": "2026-10-21T08:00:00+00:00"
+ },
+ {
+  "slug": "remote-502",
+  "id": "502",
+  "company": "Ledger &amp; Co",
+  "position": "Accounting Manager",
+  "tags": [
+   "finance",
+   "non tech"
+  ],
+  "description": "<p>Manage the books.</p>",
+  "location": "",
+  "url": "https://remoteOK.com/remote-jobs/remote-502",
+  "apply_url": "https://remoteOK.com/remote-jobs/remote-502",
+  "epoch": "1792656000",
+  "date": "2026-10-22T08:00:00+00:00"
+ },
+ {
+  "slug": "remote-503",
+  "id": "503",
+  "company": "Pixel Forge",
+  "position": "React Developer",
+  "tags": [
+   "react"
+  ],
+  "description": "<p>React, Next.js and TypeScript.</p>",
+  "location": "",
+  "url": "https://remoteOK.com/remote-jobs/remote-503",
+  "apply_url": "https://remoteOK.com/remote-jobs/remote-503",
+  "epoch": "1792659600",
+  "date": "2026-10-22T09:00:00+00:00"
+ },
+ {
+  "slug": "remote-504",
+  "id": "504",
+  "company": "DataCo",
+  "position": "Python Engineer",
+  "tags": [],
+  "description": "<p>Python ETL.</p>",
+  "location": "Worldwide",
+  "url": "https://remoteOK.com/remote-jobs/remote-504",
+  "apply_url": "https://remoteOK.com/remote-jobs/remote-504",
+  "epoch": "1788249600",
+  "date": "2026-09-01T08:00:00+00:00"
+ },
+ {
+  "slug": "remote-505",
+  "id": "505",
+  "company": "NoDateCo",
+  "position": "Django Developer",
+  "tags": [],
+  "description": "<p>Posted 2 days ago. Django and PostgreSQL APIs.</p>",
+  "location": "Worldwide",
+  "url": "https://remoteOK.com/remote-jobs/remote-505",
+  "apply_url": "https://remoteOK.com/remote-jobs/remote-505"
+ }
+]

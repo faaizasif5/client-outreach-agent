@@ -96,7 +96,7 @@ eligibility:
     - '\bpositions? (has been |have been |is |are |was |were )?(now )?filled\b'
     - '\b(role|position|job|opening)s? (is |are |has been |have been )?(now )?closed\b'
     - '^\W*(filled|closed)\b'
-    - '(?-i:\bFILLED\b)'
+    - '(?-i:\b(FILLED|CLOSED)\b)'
     - '\bno longer (hiring|accepting|available|open)\b'
     - '\bwe(''ve| have) (now )?filled\b'
   regulated:
