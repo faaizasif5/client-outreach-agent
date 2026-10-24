@@ -1,0 +1,68 @@
+# FAKE example profile. Copy to candidate/profile.yaml (gitignored) and fill in real data
+# from spec section 6. Every claim the tool makes must trace to a `facts` line or a
+# `production`/`projects` skill here.
+name: Alex Example
+location: Lahore, Pakistan (PKT, UTC+5)
+availability:
+  arrangement: [contractor, B2B]
+  us_overlap_hours: 4
+links: {github: "https://github.com/example", linkedin: "", portfolio: ""}
+
+answer_bank:
+  email: "alex@example.com"
+  phone: "+92 300 0000000"
+  years_experience: 3
+  notice_period: "2 weeks"
+  expected_rate: "ask me"
+  work_authorization: "Based in Pakistan; available as a B2B contractor. Not authorized to work in the US."
+  why_startup: "I like owning features end to end."
+
+experience:
+  - company: Example Software House
+    title: Software Engineer
+    period: Jan 2022 - present
+    context: "Services company; client projects"
+    facts:
+      - "Shipped features for 5 client projects"
+education:
+  - "Bachelor's in Computer Science, Example University (2018-2022)"
+
+projects:
+  bookingapp:
+    type: work (client project)
+    role: Full Stack Developer
+    stack: [vue.js, django, postgresql, redis]
+    facts:
+      - "Built a room-booking flow in Vue.js"
+      - "Cut API latency by 30% with Redis caching"
+  notesbot:
+    type: personal
+    role: Developer
+    stack: [fastapi, next.js, pgvector]
+    facts:
+      - "RAG notes search with FastAPI and pgvector"
+
+skills:
+  production: [python, typescript, javascript, sql, vue.js, react, django, django-rest-framework, postgresql, redis]
+  projects: [fastapi, next.js, pgvector, rag]
+  other: [aws, docker]
+
+resumes:
+  fullstack:
+    file: candidate/resumes/fullstack.pdf
+    summary: "Full-stack engineer: Vue/React frontends, Django backends, PostgreSQL/Redis."
+    keywords: [full stack, fullstack, react, vue, next.js, typescript, django, fastapi, postgresql, redis]
+    highlight_projects: [bookingapp, notesbot]
+    supported_seniority: mid
+  fde:
+    file: candidate/resumes/fde.pdf
+    summary: "Full-stack engineer who works directly with client teams."
+    keywords: [forward deployed, customer engineer, solutions engineer, client-facing, integrations, full stack]
+    highlight_projects: [bookingapp]
+    supported_seniority: mid
+  python_django:
+    file: candidate/resumes/python_django.pdf
+    summary: "Python backend engineer: Django/DRF APIs, FastAPI, PostgreSQL."
+    keywords: [python, django, drf, fastapi, backend, postgresql, redis]
+    highlight_projects: [bookingapp, notesbot]
+    supported_seniority: mid

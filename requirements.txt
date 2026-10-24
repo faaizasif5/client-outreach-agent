@@ -1,0 +1,8 @@
+# Phase 1 dependencies only (spec section 4). Phase 2+ libraries are added when those phases start.
+requests>=2.31
+feedparser>=6.0
+beautifulsoup4>=4.12
+pydantic>=2.7
+pyyaml>=6.0
+python-dotenv>=1.0
+pytest>=8.0
