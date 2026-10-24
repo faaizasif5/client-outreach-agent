@@ -135,8 +135,10 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
     if job["outreach_type"] == "network_pitch":
         if not (d.network and d.network.after_accept_message.strip()):
             problems.append("LinkedIn pitch without a message")
-        elif "pakistan" not in d.network.after_accept_message.lower():
-            problems.append("LinkedIn pitch must say the candidate is based in Pakistan")
+        elif job["bucket"] != "eligible" and "pakistan" not in d.network.after_accept_message.lower():
+            problems.append("LinkedIn pitch for a stretch job must say the candidate is based in Pakistan")
+        elif re.search(r"\bcontract(or|ing)\b|\bUS hours\b|\bcost\b", d.network.after_accept_message, re.I):
+            problems.append("LinkedIn pitch starts a conversation: no contractor terms, US hours or cost")
     elif job["outreach_type"] == "direct_email":
         if not (d.subject and d.body.strip()):
             problems.append("missing subject or body")
@@ -165,6 +167,9 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
         problems.append("stretch job must never get a portal kit")
     if d.network and mode != "none" and re.search(r"\d", d.network.after_accept_message or ""):
         problems.append("LinkedIn message must stay general: no numbers or metrics")
+    if d.network and mode != "none" and re.search(r"(?<!api )\b(call|meeting|calendly|zoom)\b",
+                                                  d.network.after_accept_message or "", re.I):
+        problems.append("LinkedIn message should open a conversation, not ask for a call")
 
     if d.tailored and (not job.get("tailor") or d.tailored.resume_key.value != job["resume_key"]):
         d.tailored = None                       # code decides which jobs get a tailored resume

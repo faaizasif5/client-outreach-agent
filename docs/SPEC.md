@@ -556,9 +556,11 @@ Columns:
 
 LinkedIn messages (requests always go out without a note; the free tier allows only a few):
 - Stretch jobs routed here (no email, founder LinkedIn known, row marked `is_pitch`): the message is the
-  pitch, 4 short lines: something genuine about what they build, 2-3 of their stack that I have plus
-  working across the stack with agentic coding via Claude Code, the honest Pakistan / US hours / contract
-  line, and a light ask for a call.
+  start of a conversation, not a sales pitch. 3 short paragraphs: what genuinely caught my interest
+  about what they build; a plain intro (software engineer working across 2-3 of their stack that I have,
+  using Claude Code to move quickly from idea to implementation, "based in Pakistan" folded in for stretch
+  jobs); interest in learning more and whether I could be useful, ending with an open question or an
+  offer to chat. Code rejects asks for a call or meeting, and contractor / US hours / cost talk.
 - Portal jobs: thanks, I applied on their site, and how my stack fits.
 - Jobs I emailed: a short thanks and a pointer to the email (no second pitch).
 - No numbers, metrics, single achievements or client names in any message (enforced in code). Each person

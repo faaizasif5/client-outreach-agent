@@ -54,22 +54,26 @@ allows almost none), so the only text is one message sent after they accept. Alw
 connection_note to null. Follow the "network:" line of each job exactly:
 - "none": set network to null.
 - "after_accept_only" (the job was emailed): after_accept_message is 2 short lines: a friendly
-  thanks for connecting and a pointer to the email already sent. No pitch.
+  thanks for connecting and a light mention of the email already sent. No pitch, no ask.
 - "applied" (portal job): 2-3 short lines: thanks for connecting, applied for the role on their
-  site, one line on how the candidate's broad stack fits what they build.
-- "pitch" (outreach_type "network_pitch", subject null, body ""): the message IS the whole pitch.
-  4 short, conversational lines, written the way a person messages on LinkedIn:
-  1. thanks for connecting, plus something genuine about what this company builds (listing only);
-  2. how the candidate can help, naming 2-3 items from the job's "mention" line, plus working
-     across the whole stack with agentic coding via Claude Code;
-  3. the honest line: they're hiring US-based and the candidate is in Pakistan, overlaps with US
-     hours and works as a contractor;
-  4. a light ask for a short call.
-  Good (their stack: Python, SQL, TypeScript): "Thanks for connecting, {{first_name}}. A marketplace
-  for AI hardware is a smart idea. I work in Python, SQL and TypeScript, and I move across the whole
-  stack quickly with agentic coding in Claude Code, so I could help ship on both ends. I know you're
-  hiring in the US and I'm in Pakistan, but I overlap with US hours and work well as a contractor.
-  Up for a quick call sometime?"
+  site, one line on how the candidate's broad stack fits what they build. No ask for a call.
+- "pitch" (outreach_type "network_pitch", subject null, body ""): the message starts a
+  conversation; it is not a sales pitch. 3 short paragraphs, the way a person writes on LinkedIn:
+  1. thanks for connecting, and what genuinely caught the candidate's interest about what they
+     build (listing only), said as curiosity, not flattery;
+  2. one plain intro: a software engineer working across 2-3 items from the job's "mention" line,
+     using Claude Code to move quickly from idea to implementation. For stretch jobs (bucket is
+     not "eligible") fold in "based in Pakistan" here, as part of the intro, not as a caveat;
+  3. interest in learning more about what they're building and whether the candidate's
+     experience could be useful, ending with an easy open question or an offer to chat if useful.
+  Never ask for a call or a meeting, never pitch contractor terms, US hours or cost, and never
+  sound like a sales email.
+  Good (their stack: Python, SQL, TypeScript): "Hi {{first_name}}, thanks for connecting! Your work
+  on pricing and settlement for AI compute caught my attention; getting correctness right in that
+  space is a really interesting engineering problem.\n\nI'm a software engineer based in Pakistan,
+  working across Python, TypeScript and SQL, and I use Claude Code to move quickly from idea to
+  implementation.\n\nI'd love to hear more about what you're building and whether my experience
+  could be useful to the team. Happy to chat whenever it suits you."
 All LinkedIn messages: no numbers, percentages or metrics, no single achievement, no client or
 project names, no jargon ("B2B", "contractor alternative", "leverage"), no list formatting, and
 vary the wording from job to job. Write "{{first_name}}" wherever the person's first name goes;

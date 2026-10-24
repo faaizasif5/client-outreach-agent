@@ -156,9 +156,10 @@ def test_draft_jobs_claude_failure(profile, cfg):
 
 # ---------------------------------------------------------------- Network tab notes (Phase 3)
 
-PITCH_MSG = ("Thanks for connecting, {first_name}. Love what you're building. I build full-stack products "
-             "with React and Django and move fast with agentic coding in Claude Code. I know you're hiring in "
-             "the US and I'm in Pakistan; up for a quick call?")
+PITCH_MSG = ("Hi {first_name}, thanks for connecting! What you're building caught my attention.\n\n"
+             "I'm a software engineer based in Pakistan, working across React and Django, and I use Claude Code "
+             "to move quickly from idea to implementation.\n\n"
+             "I'd love to hear more about what you're building. Happy to chat whenever it suits you.")
 
 
 def test_network_pitch_is_one_message_and_notes_are_dropped(profile, cfg):
@@ -172,6 +173,23 @@ def test_network_pitch_is_one_message_and_notes_are_dropped(profile, cfg):
     assert any("Pakistan" in p for p in problems(no_pk, j, profile, cfg))
     missing = Draft(job_key="k1", outreach_type="network_pitch")
     assert any("without a message" in p for p in problems(missing, j, profile, cfg))
+    eligible = job(outreach_type="network_pitch", network_mode="pitch")      # location only matters for stretch
+    no_pk_ok = Draft(job_key="k1", outreach_type="network_pitch",
+                     network={"after_accept_message": PITCH_MSG.replace(" based in Pakistan,", ",")})
+    assert problems(no_pk_ok, eligible, profile, cfg) == []
+
+
+@pytest.mark.parametrize("ending,expected", [
+    ("Up for a quick call sometime?", "not ask for a call"),
+    ("Would a short meeting work?", "not ask for a call"),
+    ("I overlap with US hours.", "no contractor terms"),
+    ("I work well as a contractor.", "no contractor terms"),
+])
+def test_linkedin_pitch_opens_a_conversation(profile, cfg, ending, expected):
+    j = job(outreach_type="network_pitch", bucket="us_auth_stretch", network_mode="pitch")
+    d = Draft(job_key="k1", outreach_type="network_pitch",
+              network={"after_accept_message": PITCH_MSG.replace("Happy to chat whenever it suits you.", ending)})
+    assert any(expected in p for p in problems(d, j, profile, cfg))
 
 
 def test_connection_note_over_200_chars_rejected():
