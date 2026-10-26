@@ -65,7 +65,15 @@ def test_weekly_compact_on_mondays():
               "> **us_auth_stretch**: 40 sent with no positive reply."]
     text = digest.render_digest(ctx(weekly=weekly))
     assert "## This week" in text and "- Last 7 days: 3 emails sent" in text and "| a |" not in text
-    assert "- **us_auth_stretch**: 40 sent" in text
+    assert "- us_auth_stretch: 40 sent" in text
+
+
+def test_weekly_section_left_out_when_nothing_happened():
+    weekly = ["## Weekly stats", "", "Last 7 days: 0 emails sent, 0 drafts discarded, 0 portal applications, "
+              "0 drafts expired unreviewed.", "Discard rate: n/a", "", "_No outreach yet._", ""]
+    for render in (digest.render_digest, digest.render_digest_html):
+        out = render(ctx(weekly=weekly))
+        assert "This week" not in out and "No outreach yet" not in out and "_" not in out.split("Full report")[0][-5:]
 
 
 # ---------------------------------------------------------------- HTML email + delivery

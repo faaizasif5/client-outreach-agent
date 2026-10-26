@@ -241,6 +241,13 @@ def _detail(page: dict, listing: dict, http, now: datetime, max_age_days: int) -
     return detail
 
 
+def _only_short(result: dict) -> bool:
+    """Broken only because fewer listings came back than usual (the page itself loaded fine)."""
+    c = result["checks"]
+    return result["status"] == "broken" and not c.get("listing_count") and all(
+        c.get(k) for k in ("page_loads", "field_quality", "url_safety"))
+
+
 def _broken_page(conn, page, result, html, now, info, selectors_path, snapshots, cfg, claude) -> None:
     import os
     from db import repo
@@ -252,6 +259,10 @@ def _broken_page(conn, page, result, html, now, info, selectors_path, snapshots,
         info["manual_fix_needed"] = True
         if result["checks"].get("page_error") == "HTTP 401":
             info["notes"].append(f"YC page {name}: your session expired. Run: python main.py yc-login")
+        elif _only_short(result):
+            usual = f" (usually ~{result['average']:.0f})" if result.get("average") else ""
+            info["notes"].append(f"YC page {name} returned only {result['count']} listings{usual}, even after a "
+                                 "retry; probably a slow connection. It tries again next run.")
         else:
             info["notes"].append(f"YC page {name} broken ({result['checks']}); fix config/yc_selectors.yaml by hand.")
         return
@@ -313,11 +324,14 @@ def fetch(conn, http, now: datetime, *, cfg: dict, load_page=None, claude=None,
         if page.get("requires_session") and not load_page and not has_session():
             info["notes"].append(f"YC page {name} skipped: no saved session (python main.py yc-login).")
             continue
-        if page["mode"] == "xhr" and not load_page:
-            status, html = load_logged_in_companies(page["results_url"], page["xhr"])
-        else:
-            status, html = (load_page or load_results_page)(page["results_url"], cfg["http"]["user_agent"])
-        result = yc_health.check(status, html, page, yc_health.recent_counts(conn, page=name))
+        for attempt in range(2):   # a short logged-in load is usually a slow connection: retry once
+            if page["mode"] == "xhr" and not load_page:
+                status, html = load_logged_in_companies(page["results_url"], page["xhr"])
+            else:
+                status, html = (load_page or load_results_page)(page["results_url"], cfg["http"]["user_agent"])
+            result = yc_health.check(status, html, page, yc_health.recent_counts(conn, page=name))
+            if not (page["mode"] == "xhr" and not load_page and _only_short(result)):
+                break
         info["pages"][name] = {"status": result["status"], "count": result["count"]}
         if result["status"] == "broken":
             _broken_page(conn, page, result, html, now, info, selectors_path, snapshots, cfg, claude)
@@ -418,6 +432,7 @@ def load_logged_in_companies(url: str, xhr: dict, profile_dir: Path = PROFILE_DI
     """Headless load with your saved session; keeps only the matching background responses
     (company + job data), scrolling for up to max_batches. Redirect away -> 401 (session expired).
     Nothing else from the page (your profile, messages) is kept."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
     from playwright.sync_api import sync_playwright
     batches = []
     with sync_playwright() as p:
@@ -435,13 +450,14 @@ def load_logged_in_companies(url: str, xhr: dict, profile_dir: Path = PROFILE_DI
             resp = page.goto(url, wait_until="networkidle", timeout=timeout_ms)
             if urlsplit(page.url).path.rstrip("/") != urlsplit(url).path.rstrip("/"):
                 return 401, ""
-            seen = len(batches)
             for _ in range(xhr["max_batches"] - 1):
-                page.mouse.wheel(0, 6000)
+                try:   # wait for the next batch itself (slow connections took longer than a fixed pause)
+                    with page.expect_response(lambda r: xhr["match"] in r.url and r.request.method == "POST",
+                                              timeout=xhr.get("batch_timeout_ms", 20000)):
+                        page.mouse.wheel(0, 6000)
+                except PlaywrightTimeout:
+                    break                        # no more batches: end of the list
                 page.wait_for_timeout(2500)      # polite: one batch at a time
-                if len(batches) == seen:
-                    break
-                seen = len(batches)
             status = resp.status if resp else 0
         finally:
             ctx.close()

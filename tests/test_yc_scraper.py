@@ -324,3 +324,41 @@ def test_no_session_skips_logged_in_page(conn, sel_path, monkeypatch):
     raws, info = yc_scraper.fetch(conn, Http(), NOW, cfg=CFG, selectors_path=sel_path)
     assert "waas_companies" not in info["pages"] and any("no saved session" in n for n in info["notes"])
     assert all("companies?" not in u for u in loads)
+
+
+def _companies_body(keep: int) -> str:
+    data = json.loads(COMPANIES)
+    data["companies"] = data["companies"][:keep]
+    return json.dumps(data)
+
+
+def _usual_count(conn, n: int) -> None:
+    for i in range(3):
+        conn.execute("INSERT INTO yc_health (checked_at, status, listing_count, new_count, details, page) "
+                     "VALUES (?, 'healthy', ?, 0, '{}', 'waas_companies')", (f"2026-10-0{i + 1}T00:00:00Z", n))
+
+
+def test_short_logged_in_load_is_retried_once(conn, sel_path, monkeypatch):
+    monkeypatch.setattr(yc_scraper, "has_session", lambda: True)
+    monkeypatch.setattr(yc_scraper, "load_results_page", pages())
+    full = yc_health.check(200, COMPANIES, yc_scraper.page_rules(yc_scraper.load_selectors(sel_path),
+                                                                  "waas_companies"), [])["count"]
+    _usual_count(conn, 5)          # fixture: 1 listing from the first company (short), 2 in all (normal)
+    bodies = [(200, _companies_body(1)), (200, COMPANIES)]
+    monkeypatch.setattr(yc_scraper, "load_logged_in_companies", lambda *a, **k: bodies.pop(0))
+    raws, info = yc_scraper.fetch(conn, Http(), NOW, cfg=CFG, selectors_path=sel_path)
+    page = info["pages"]["waas_companies"]
+    assert bodies == [] and (page["status"], page["count"]) == ("healthy", full)
+
+
+def test_short_load_after_retry_says_slow_connection_not_fix_config(conn, sel_path, monkeypatch):
+    monkeypatch.setattr(yc_scraper, "has_session", lambda: True)
+    monkeypatch.setattr(yc_scraper, "load_results_page", pages())
+    calls = []
+    monkeypatch.setattr(yc_scraper, "load_logged_in_companies",
+                        lambda *a, **k: calls.append(1) or (200, _companies_body(1)))
+    _usual_count(conn, 500)
+    raws, info = yc_scraper.fetch(conn, Http(), NOW, cfg=CFG, selectors_path=sel_path)
+    note = next(n for n in info["notes"] if "waas_companies" in n)
+    assert len(calls) == 2 and "slow connection" in note and "usually ~500" in note
+    assert "yc_selectors.yaml" not in note

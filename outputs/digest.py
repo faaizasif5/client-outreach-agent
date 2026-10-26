@@ -249,6 +249,17 @@ def _action_line(c: dict) -> str:
     return head + (f"\n  {why}" if why else "") + stack_line + (f" [listing]({url})" if url else "")
 
 
+NOTHING_YET = re.compile(r"^Last 7 days: 0 emails sent, 0 drafts discarded, 0 portal applications, 0 drafts")
+
+
+def weekly_lines(ctx: dict) -> list[str]:
+    """The weekly stats as plain lines (no markdown); nothing at all in a week with no outreach."""
+    lines = [re.sub(r"\*\*|^_|_$", "", l.lstrip("> ")) for l in ctx.get("weekly") or []
+             if l and not l.startswith(("|", "## "))]
+    lines = [l for l in lines if l not in ("No outreach yet.", "Discard rate: n/a")]
+    return [] if all(NOTHING_YET.match(l) for l in lines) else lines
+
+
 def render_digest(ctx: dict) -> str:
     """Only what needs the user today. The full report stays in reports/<date>.md."""
     stage = ctx.get("outreach") or {}
@@ -298,9 +309,9 @@ def render_digest(ctx: dict) -> str:
             out.append(f"- …and {len(uncertain) - 5} more in the full report")
         out.append("")
 
-    weekly = [l for l in ctx.get("weekly") or [] if l and not l.startswith("|") and not l.startswith("## ")]
+    weekly = weekly_lines(ctx)
     if weekly:
-        out += ["## This week", ""] + [f"- {l.lstrip('> ')}" for l in weekly] + [""]
+        out += ["## This week", ""] + [f"- {l}" for l in weekly] + [""]
     out.append(f"Full report (labels, all scored jobs): reports/{ctx['date']}.md")
     return "\n".join(out) + "\n"
 
@@ -409,9 +420,9 @@ def render_digest_html(ctx: dict) -> str:
         if len(uncertain) > 5:
             lines.append(f'<span style="color:#5f6368">…and {len(uncertain) - 5} more in the full report</span>')
         rows.append(_section("Worth a manual look", _bullets(lines)))
-    weekly = [l for l in ctx.get("weekly") or [] if l and not l.startswith("|") and not l.startswith("## ")]
+    weekly = weekly_lines(ctx)
     if weekly:
-        rows.append(_section("This week", _bullets([_e(l.lstrip("> ").replace("**", "")) for l in weekly])))
+        rows.append(_section("This week", _bullets([_e(l) for l in weekly])))
     rows.append(f'<tr><td style="padding-top:18px;font-size:12px;color:#80868b">Full report with all scored jobs and '
                 f'labels: reports/{_e(ctx["date"])}.md</td></tr>')
     return (f'<!doctype html><html><body style="margin:0;padding:0;background:#f1f3f4">'
