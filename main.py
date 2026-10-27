@@ -197,10 +197,14 @@ def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dic
             continue
         fetched.add(name)
         counts[f"fetched_{name}"] = len(raws)
+        log.info("fetched %s: %d listings", name, len(raws))
         ingest(conn, raws, cfg, profile, now, http, run_id, errors)
+        for note in source_info.get(name, {}).get("notes", []):
+            log.warning("%s: %s", name, note)
 
     candidates = scoring_candidates(conn, cfg, profile, now, rescore=rescore)
     counts["score_candidates"] = len(candidates)
+    log.info("scoring: %d new jobs to score", len(candidates))
     usage, status = None, "success"
     if candidates:
         problem = check_claude() if check_claude else None
@@ -259,6 +263,17 @@ def run_pipeline(conn, cfg: dict, profile: dict, *, now: datetime, fetchers: dic
         "pitches_created": stage.get("pitches_created", 0) if stage else 0,
         "replies": (stage or {}).get("replies", 0),
     })
+    log.info("gate: %d seen, %d eligible, %d stretch, %d uncertain, %d ineligible (top: %s)",
+             counts["seen"], counts["eligible"], counts["stretch"], counts["uncertain"], counts["ineligible"],
+             ", ".join(f"{r} {n}" for r, n in ineligible.most_common(3)) or "none")
+    log.info("outreach: %d shortlisted, %d queued, %d drafts, %d kits, %d pitches, %d replies",
+             counts["shortlisted"], counts["queued"], counts["drafts_created"], counts["kits_created"],
+             counts["pitches_created"], counts["replies"])
+    for part in ("sync", "sheet"):
+        if (stage or {}).get(part):
+            log.info("%s: %s", part, json.dumps(stage[part], default=str))
+    for e in errors:
+        log.warning("error: %s", e)
     notes = list((google or {}).get("notes", []))
     for info in source_info.values():
         notes += info.get("notes", [])
@@ -417,6 +432,7 @@ def main(argv=None) -> int:
                                                       encoding="utf-8"), logging.StreamHandler()])
     conn = repo.connect(ROOT / "data" / "jobs.db")
     cfg = load_config()
+    prune_logs(ROOT / "logs", cfg.get("logging", {}).get("keep_days", 30), now)
 
     if args.command == "yc-login":   # you log in yourself; only the session is kept (data/yc_browser_profile)
         from fetchers import yc_scraper
@@ -461,7 +477,26 @@ def _yc(conn, http, now, cfg, source_info: dict) -> list:
     return raws
 
 
+def run_trigger(executable: str = sys.executable) -> str:
+    """The Windows task starts pythonw.exe (no console); a run you type uses python.exe."""
+    return "scheduled" if Path(executable).name.lower() == "pythonw.exe" else "manual"
+
+
+def prune_logs(log_dir: Path, keep_days: int, now: datetime) -> int:
+    """Deletes daily logs (logs/YYYY-MM-DD.log) older than keep_days. Other files are left alone."""
+    cutoff = (now.astimezone(PKT) - timedelta(days=keep_days)).date().isoformat()
+    removed = 0
+    for f in log_dir.glob("????-??-??.log"):
+        if f.stem < cutoff:
+            f.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
 def _run(conn, cfg, profile, args, now, live) -> int:
+    started = datetime.now(timezone.utc)
+    log.info("run start: %s, %s%s, sources %s", "live" if live else "dry-run", run_trigger(),
+             " (--force)" if args.force else "", args.sources)
     http = Http(cfg["http"], ROOT / "data" / "cache")
     local = now.astimezone(PKT)
     src = cfg["sources"]
@@ -483,6 +518,7 @@ def _run(conn, cfg, profile, args, now, live) -> int:
                      "tracker": f"https://docs.google.com/spreadsheets/d/{google['sheet_id']}" if google.get("sheet_id") else None}
             send_digest(conn, google["gmail"], result["run_id"], {**result["digest_ctx"], "links": links}, now,
                         delivery=cfg.get("digest", {}).get("delivery", "send"))
+            log.info("digest: %s", cfg.get("digest", {}).get("delivery", "send"))
         except Exception as e:
             log.warning("digest draft failed: %s", e)
         counts = dict(result["counts"], failed_attempts=schedule.failed_attempts_today(conn, now),
@@ -495,6 +531,8 @@ def _run(conn, cfg, profile, args, now, live) -> int:
     printable = {k: v for k, v in result.items() if k not in ("report", "digest", "digest_ctx", "outreach")}
     print(json.dumps(printable, indent=2, default=str))
     print(f"Report: {result['report']}")
+    log.info("run end: %s in %.0fs, %d errors, report %s", result["status"],
+             (datetime.now(timezone.utc) - started).total_seconds(), len(result["errors"]), result["report"])
     return 0 if result["status"] == "success" else 1
 
 

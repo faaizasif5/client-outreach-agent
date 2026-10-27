@@ -271,3 +271,24 @@ def test_keyword_added_later_brings_filtered_jobs_back(setup):
     assert job(conn, "src:hn:4242")["status"] == "keyword_filtered"
     cfg["keywords"]["role_title_include"].append("member of technical staff")
     assert [j["job_key"] for j in main.scoring_candidates(conn, cfg, profile, NOW)] == ["src:hn:4242"]
+
+
+def test_run_logs_each_step(setup, caplog):
+    import logging
+    with caplog.at_level(logging.INFO, logger="outreach_agent"):
+        run(setup, FakeClaude())
+    text = caplog.text
+    for step in ("fetched hn:", "scoring:", "gate:", "outreach:", "claude scoring usage"):
+        assert step in text, step
+
+
+def test_run_trigger_scheduled_vs_manual():
+    assert main.run_trigger(r"D:\x\.venv\Scripts\pythonw.exe") == "scheduled"
+    assert main.run_trigger(r"D:\x\.venv\Scripts\python.exe") == "manual"
+
+
+def test_prune_logs_keeps_recent_and_other_files(tmp_path):
+    for name in ("2026-08-01.log", "2026-10-01.log", "2026-10-24.log", "yc_rescore.out"):
+        (tmp_path / name).write_text("x")
+    assert main.prune_logs(tmp_path, 30, NOW) == 1
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["2026-10-01.log", "2026-10-24.log", "yc_rescore.out"]

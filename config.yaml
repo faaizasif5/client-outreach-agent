@@ -348,3 +348,6 @@ stack:
     mapbox: ['mapbox']
   mention_max: 4               # technologies from their stack the message should lean on
   max_unasked: 2               # technologies a draft may name that the listing didn't ask for
+
+logging:
+  keep_days: 30          # logs/YYYY-MM-DD.log older than this are deleted at the start of each run

@@ -131,7 +131,8 @@ job-agent/
 │   ├── fixtures/              # saved sample listings
 │   └── test_*.py
 ├── reports/                   # local digests and dry-run drafts
-└── logs/
+└── logs/                      # YYYY-MM-DD.log: run start (live/dry-run, scheduled/manual, --force),
+                               # one line per step, errors, run end; deleted after logging.keep_days (30)
 ```
 Added while building: `pipeline/stack.py` (stack matching), `pipeline/outreach.py` (liveness -> drafting ->
 Gmail/Sheets stage), `pipeline/schedule.py` (once-per-day guard), `outputs/stats.py` (weekly stats),

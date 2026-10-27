@@ -25,7 +25,14 @@ Run from the repo root in PowerShell or cmd.
 | `schtasks /Delete /TN ClientOutreachAgent /F` | Remove the task completely. |
 
 The task fires on logon, unlock, wake and hourly; the once-per-day guard decides whether it runs.
-Logs: `logs/<date>.log`.
+
+## Where to look after a run
+
+| File | What's in it |
+|---|---|
+| `logs/<date>.log` | Each run's start (live or dry-run, scheduled or manual, `--force`), one line per step (fetch per source, gate, scoring, outreach, sync, sheet, digest), errors, and the end with duration. Skipped triggers say why. Kept 30 days (`logging.keep_days`). |
+| `reports/<date>.md` | The full report: every scored job and its reason, drafts, uncertain list. Label it for calibration. |
+| `runs` table in `data/jobs.db` | One row per run: times, status, all counts, Claude usage, errors. |
 
 ## One-time setup
 
