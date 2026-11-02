@@ -36,7 +36,15 @@ def load_credentials(credentials_path: Path, token_path: Path, interactive: bool
     if creds and creds.valid:
         return creds
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        from google.auth.exceptions import RefreshError
+        try:
+            creds.refresh(Request())
+        except RefreshError as e:   # e.g. a "Testing" OAuth app's sign-in lapses after 7 days
+            if not interactive:
+                raise NeedsSetup("Google sign-in expired or revoked: run `python main.py setup-google`") from e
+            creds = None            # setup-google: sign in again below
+    if creds and creds.valid:
+        pass
     elif interactive:
         if not credentials_path.exists():
             raise NeedsSetup(f"{credentials_path} not found (OAuth desktop client from Google Cloud)")

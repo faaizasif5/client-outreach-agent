@@ -64,6 +64,7 @@ def check(text: str, job: dict, profile: dict, cfg: dict, require_mention: bool)
         if require_mention and sm.mention and not set(named) & set(sm.mention):
             problems.append(f"doesn't mention any of their stack you have ({', '.join(sm.mention)})")
         unasked = [t for t in named if t not in sm.asked and t != "claude code"]
-        if sm.asked and len(unasked) > cfg["stack"]["max_unasked"]:
+        # A listing that names under 2 technologies is generic: describing your broad stack is fine.
+        if len(sm.asked) >= 2 and len(unasked) > cfg["stack"]["max_unasked"]:
             problems.append(f"names too much stack they didn't ask for: {', '.join(unasked)}")
     return problems

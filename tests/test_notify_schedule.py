@@ -131,3 +131,63 @@ def test_scheduler_not_installed_and_bad_action(monkeypatch, capsys):
     assert main.main(["scheduler", "off"]) == 1
     assert "install_task.ps1" in capsys.readouterr().out
     assert main.main(["scheduler", "pause"]) == 2
+
+
+def test_crash_is_recorded_and_expired_google_login_alerts_once(conn, cfg):
+    import main
+    from outputs.gmail_client import NeedsSetup
+    sent = []
+    alert = lambda message, **k: sent.append(message)              # noqa: E731
+    for hour in range(3):
+        main.record_crash(conn, cfg, NOW + timedelta(hours=hour), NeedsSetup("expired"), alert=alert)
+    rows = conn.execute("SELECT status, errors FROM runs").fetchall()
+    assert [r["status"] for r in rows] == ["failed"] * 3 and "NeedsSetup" in rows[0]["errors"]
+    assert len(sent) == 1 and "setup-google" in sent[0]                # first failure only
+    assert schedule.guard_reason(conn, NOW + timedelta(hours=4), 3) == "3 failed attempts today"
+
+
+def test_other_crash_alerts_on_last_attempt_and_updates_running_row(conn, cfg):
+    import main
+    run_id = NOW.astimezone(main.PKT).strftime("%Y%m%dT%H%M%S%z")
+    conn.execute("INSERT INTO runs (run_id, started_at, status) VALUES (?, ?, 'running')", (run_id, NOW.isoformat()))
+    sent = []
+    for hour in range(3):
+        main.record_crash(conn, cfg, NOW + timedelta(hours=hour), RuntimeError("boom"),
+                          alert=lambda message, **k: sent.append(message))
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 3     # first one updated, not duplicated
+    assert len(sent) == 1 and "crashed 3 times" in sent[0]
+
+
+def test_expired_refresh_token_becomes_needs_setup(tmp_path, monkeypatch):
+    from google.auth.exceptions import RefreshError
+    from google.oauth2.credentials import Credentials
+    from outputs import gmail_client
+    token = tmp_path / "token.json"
+    token.write_text('{"refresh_token": "r", "client_id": "c", "client_secret": "s", "token": "t", '
+                     '"expiry": "2020-01-01T00:00:00Z"}')
+
+    def refuse(self, request):
+        raise RefreshError("invalid_grant: Token has been expired or revoked.")
+    monkeypatch.setattr(Credentials, "refresh", refuse)
+    with pytest.raises(gmail_client.NeedsSetup, match="setup-google"):
+        gmail_client.load_credentials(tmp_path / "credentials.json", token)
+
+
+def test_setup_google_signs_in_again_when_refresh_fails(tmp_path, monkeypatch):
+    from google.auth.exceptions import RefreshError
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib import flow
+    from outputs import gmail_client
+    token = tmp_path / "token.json"
+    token.write_text('{"refresh_token": "r", "client_id": "c", "client_secret": "s", "token": "t", '
+                     '"expiry": "2020-01-01T00:00:00Z"}')
+    (tmp_path / "credentials.json").write_text("{}")
+    monkeypatch.setattr(Credentials, "refresh", lambda self, r: (_ for _ in ()).throw(RefreshError("expired")))
+    fresh = Credentials(token="new", refresh_token="r2", client_id="c", client_secret="s")
+
+    class Flow:
+        def run_local_server(self, port):
+            return fresh
+    monkeypatch.setattr(flow.InstalledAppFlow, "from_client_secrets_file", lambda *a, **k: Flow())
+    assert gmail_client.load_credentials(tmp_path / "credentials.json", token, interactive=True) is fresh
+    assert '"new"' in token.read_text()

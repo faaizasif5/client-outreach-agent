@@ -36,6 +36,21 @@ def compose(counts: dict) -> dict:
             "tags": "envelope" if drafts else "clipboard", "message": " ".join(parts)}
 
 
+def alert(message: str, *, topic: str | None, enabled: bool, server: str, timeout: int = 10,
+          post=requests.post) -> bool:
+    """A high-priority push for a problem you must fix yourself (no job or personal details)."""
+    if not enabled or not topic:
+        return False
+    try:
+        resp = post(f"{server.rstrip('/')}/{topic}", data=message.encode("utf-8"), timeout=timeout,
+                    headers={"Title": "Job agent", "Priority": "high", "Tags": "warning"})
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        log.warning("ntfy failed: %s", e)
+        return False
+
+
 def send(counts: dict, *, topic: str | None, enabled: bool, server: str, sheet_url: str | None = None,
          timeout: int = 10, post=requests.post) -> bool:
     """Never raises: a notification failure is logged and the pipeline continues."""

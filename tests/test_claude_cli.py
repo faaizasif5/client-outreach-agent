@@ -89,3 +89,23 @@ def test_effort_flag_only_when_set(fake):
     with_effort, without = f.calls[0][0], f.calls[1][0]
     assert with_effort[with_effort.index("--effort") + 1] == "medium"
     assert "--effort" not in without
+
+
+def test_expired_login_is_reported_plainly_and_not_retried(monkeypatch):
+    calls = []
+
+    def run(cmd, **kw):   # what the CLI really prints: exit 1, the reason in the JSON "result"
+        calls.append(cmd)
+        out = envelope("Failed to authenticate: OAuth session expired and could not be refreshed", is_error=True)
+        return subprocess.CompletedProcess(cmd, 1, stdout=out, stderr="")
+    monkeypatch.setattr(claude_cli, "_run", run)
+    with pytest.raises(claude_cli.ClaudeAuthError, match="OAuth session expired.*/login"):
+        claude_cli.run_claude("p", "haiku", ScoreBatch, retries=2, sleep=lambda s: None)
+    assert len(calls) == 1
+
+
+def test_other_cli_error_uses_result_text_not_the_raw_json(monkeypatch):
+    monkeypatch.setattr(claude_cli, "_run", lambda cmd, **kw: subprocess.CompletedProcess(
+        cmd, 1, stdout=envelope("Overloaded, try again", is_error=True), stderr=""))
+    with pytest.raises(claude_cli.ClaudeError, match="failed after retries: Overloaded, try again$"):
+        claude_cli.run_claude("p", "haiku", ScoreBatch, retries=1, sleep=lambda s: None)

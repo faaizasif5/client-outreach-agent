@@ -26,6 +26,13 @@ class ClaudeError(Exception):
     pass
 
 
+class ClaudeAuthError(ClaudeError):
+    """The CLI's login expired; not retried."""
+
+
+AUTH_FAILURE = re.compile(r"failed to authenticate|oauth session expired|not logged in|/login", re.I)
+
+
 def build_command(model: str, effort: str | None = None) -> list[str]:
     exe = shutil.which("claude") or "claude"
     return [exe, "-p", "--model", model, "--output-format", "json",
@@ -66,15 +73,25 @@ def run_claude(prompt: str, model: str, schema: type[BaseModel],
             proc = _run(build_command(model, effort), input=prompt, capture_output=True,
                                   text=True, encoding="utf-8", timeout=timeout, cwd=SANDBOX,
                                   env=_child_env())
-            if proc.returncode != 0:
-                raise ClaudeError((proc.stderr or proc.stdout)[:500])
-            envelope = json.loads(proc.stdout)
+            try:
+                envelope = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                if proc.returncode != 0:
+                    raise ClaudeError((proc.stderr or proc.stdout)[:500])
+                raise
             usage = {k: envelope.get(k) for k in ENVELOPE_FIELDS if k in envelope}
             attempts.append(usage)
-            if envelope.get("is_error"):
-                raise ClaudeError(str(envelope.get("result"))[:500])
+            if envelope.get("is_error") or proc.returncode != 0:
+                message = str(envelope.get("result") or proc.stderr)[:500]
+                if AUTH_FAILURE.search(message):   # retrying won't help: you have to log in again
+                    err = ClaudeAuthError(f"{message}. Log in again: run `claude`, then /login")
+                    err.usage = {"model": model, "attempts": len(attempts), "calls": attempts}
+                    raise err
+                raise ClaudeError(message)
             parsed = schema.model_validate_json(_extract_json(envelope["result"]))
             return parsed, {"model": model, "effort": effort, "attempts": len(attempts), "calls": attempts}
+        except ClaudeAuthError:
+            raise
         except (ClaudeError, json.JSONDecodeError, ValidationError, KeyError,
                 subprocess.TimeoutExpired) as e:
             last_err = e

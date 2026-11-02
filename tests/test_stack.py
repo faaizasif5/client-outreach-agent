@@ -52,3 +52,24 @@ def test_drafter_rejects_skill_claims_not_in_profile(cfg, profile):
     d = Draft(job_key="k1", outreach_type="direct_email", subject="s",
               body=GOOD_BODY.replace("Open to a short call", "I also write Rust. Open to a short call"))
     assert any("not in your profile: rust" in p for p in drafter.validate_draft(d, job(), profile, cfg))
+
+
+def test_generic_listing_allows_broad_stack(cfg, profile):
+    job = {"stack": stack.match("Founding engineer building LLM agents end to end", profile, cfg)}
+    broad = "I build with Python, TypeScript, PostgreSQL, Redis and FastAPI."
+    assert stack.check(broad, job, profile, cfg, True) == []
+
+
+def test_form_answers_may_name_the_projects_stack(cfg, profile):
+    from pipeline import drafter
+    from schemas.ai_output import Draft
+    from tests.test_drafter import job
+    j = dict(job(outreach_type="application_brief", network_mode="none"),
+             stack=stack.match("Python, SQL and TypeScript", profile, cfg))
+    d = Draft(job_key="k1", outreach_type="application_brief",
+              kit={"cover_note": "I work in Python, SQL and TypeScript and would like to help.",
+                   "form_answers": [{"question": "Tell us about a project you're proud of.",
+                                     "answer": "A RAG app with FastAPI, Redis, PostgreSQL and Next.js."}]})
+    assert not any("too much stack" in p for p in drafter.validate_draft(d, j, profile, cfg))
+    d.kit.cover_note += " I also use React, Vue, Django and Redis."
+    assert any("too much stack" in p for p in drafter.validate_draft(d, j, profile, cfg))

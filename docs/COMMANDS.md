@@ -34,6 +34,15 @@ The task fires on logon, unlock, wake and hourly; the once-per-day guard decides
 | `reports/<date>.md` | The full report: every scored job and its reason, drafts, uncertain list. Label it for calibration. |
 | `runs` table in `data/jobs.db` | One row per run: times, status, all counts, Claude usage, errors. |
 
+## When something stops
+
+| Symptom | Fix |
+|---|---|
+| Push "Google sign-in expired" / log says `NeedsSetup` | `.venv\Scripts\python main.py setup-google` (sign in again in the browser). To stop it lapsing every 7 days, publish the OAuth app: Google Cloud console, OAuth consent screen, "Publish app". |
+| Push "Claude login expired" / log says `OAuth session expired` | Run `claude auth login` in a terminal (or `claude`, then `/login`), then `.venv\Scripts\python main.py` to redo today's run. |
+| Digest says the YC session expired | `.venv\Scripts\python main.py yc-login` |
+| Log says `run crashed` | Read the traceback under it in `logs/<date>.log`. After 3 failed attempts in a day the run stops until tomorrow, and you get a push. |
+
 ## One-time setup
 
 | Command | What it does |

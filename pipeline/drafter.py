@@ -173,11 +173,14 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
         pitch_texts.append(d.network.after_accept_message)
     all_texts = pitch_texts + ([a.answer for a in d.kit.form_answers] if d.kit else []) + (
         [d.network.after_accept_message] if d.network else [])
-    problems += stack_mod.check("\n".join(all_texts), job, profile, cfg, require_mention=False)
+    # Every text: never a technology outside the profile. Pitch texts only (not form answers about a
+    # project, which name that project's stack): lean on their stack, don't pad with what they didn't ask.
+    problems += [p for p in stack_mod.check("\n".join(all_texts), job, profile, cfg, require_mention=False)
+                 if p.startswith("names a technology not in your profile")]
     for t in pitch_texts:
         if t.strip():
             problems += [p for p in stack_mod.check(t, job, profile, cfg, require_mention=True)
-                         if p.startswith("doesn't mention")]
+                         if p.startswith(("doesn't mention", "names too much stack"))]
     if job["outreach_type"] == "network_pitch" and d.network and \
             "claude code" not in (d.network.after_accept_message or "").lower():
         problems.append("LinkedIn pitch should say you work across the stack with Claude Code")

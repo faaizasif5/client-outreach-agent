@@ -589,8 +589,11 @@ Written in Claude call #2 alongside the emails and kits (no extra call). `Status
 - If no verified detail exists, write a relevant email without forced personalization.
 - 1-2 achievements copied from the profile; never invent metrics or skills.
 - Stack: name 2-3 technologies from the listing that I have (code passes "mention" and "never claim"
-  lists); every technology named must be in the profile (checked in code). In pitch emails and LinkedIn
-  pitches, mention once that I work across the stack with agentic coding via Claude Code.
+  lists); every technology named must be in the profile (checked in code, in every text). The pitch
+  itself (email body, cover note, LinkedIn message) may name at most `stack.max_unasked` (2) technologies
+  the listing didn't ask for; that limit is skipped for generic listings naming under 2 technologies, and
+  form answers about a project may name that project's stack. In pitch emails and LinkedIn pitches,
+  mention once that I work across the stack with agentic coding via Claude Code.
 - Mention contractor availability + overlap hours when the role isn't explicitly worldwide.
 - For all stretch sub-buckets, value-first pitch in this order:
   1. Proof: one or two specific results relevant to the role (from `facts`)
@@ -874,7 +877,10 @@ Code enforces allowed transitions with a simple dict of `{from_status: {allowed_
 - [x] Fill `candidate/profile.yaml` truthfully (skills, projects, achievements, links, overlap hours)
 - [x] Install the ntfy app on my phone, subscribe to a random topic, put it in `.env`
 - [x] Fill `config.yaml` (caps, thresholds, max_age_days, eligibility patterns, `offer_paid_trial`, role-title keywords, `stretch_min_fit`, `stretch_max_team_size`, `pitch_explicit_us_only`)
-- [x] `python main.py setup-google` (OAuth, creates the tracker sheet, uploads resumes to Drive)
+- [x] `python main.py setup-google` (OAuth, creates the tracker sheet, uploads resumes to Drive). While the
+  OAuth app is in "Testing", Google expires the sign-in after 7 days; a run then stops, is recorded as
+  failed, and pushes "Google sign-in expired" once. Rerun setup-google, or publish the app to stop the expiry.
+  Any crash in a run is logged with its traceback and counts toward the 3 attempts a day.
 - [x] Resume `.tex` files in `candidate/latex/`; Tectonic in `tools/tectonic/`
 - [x] `python main.py yc-login` (log in to Work at a Startup once; rerun when the session expires)
 - [x] `scripts/install_task.ps1` (Windows task: first open of the day; `-Live` once live mode is approved;

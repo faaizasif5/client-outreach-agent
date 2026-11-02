@@ -467,7 +467,35 @@ def main(argv=None) -> int:
             if problem:
                 log.info("skipping run: %s; will retry on the next trigger", problem)
                 return 0
-        return _run(conn, cfg, profile, args, now, live)
+        try:
+            return _run(conn, cfg, profile, args, now, live)
+        except Exception as e:   # the scheduled task has no console: without this a crash leaves no trace
+            log.exception("run crashed")
+            record_crash(conn, cfg, now, e)
+            return 1
+
+
+def record_crash(conn, cfg: dict, now: datetime, e: Exception, alert=notify.alert) -> None:
+    """Marks the run failed (so the 3-attempts-a-day limit applies) and pushes an alert you can act on:
+    right away for an expired Google sign-in, otherwise on the last attempt of the day."""
+    from outputs.gmail_client import NeedsSetup
+    run_id = now.astimezone(PKT).strftime("%Y%m%dT%H%M%S%z")
+    error = json.dumps([f"crash: {type(e).__name__}: {e}"])
+    if conn.execute("UPDATE runs SET status='failed', finished_at=?, errors=? WHERE run_id=?",
+                    (repo.iso(datetime.now(timezone.utc)), error, run_id)).rowcount == 0:
+        conn.execute("INSERT INTO runs (run_id, started_at, finished_at, status, errors) VALUES (?,?,?, 'failed', ?)",
+                     (run_id, repo.iso(now), repo.iso(datetime.now(timezone.utc)), error))
+    failed = schedule.failed_attempts_today(conn, now)
+    if isinstance(e, NeedsSetup):
+        message = "Google sign-in expired, so today's run stopped. Run: python main.py setup-google"
+        due = failed == 1
+    else:
+        message = f"Job agent crashed {failed} times today ({type(e).__name__}). See logs/."
+        due = failed == cfg["schedule"]["max_attempts_per_day"]
+    if due:
+        alert(message, topic=os.environ.get("NTFY_TOPIC"),
+              enabled=os.environ.get("NTFY_ENABLED", "true").lower() != "false",
+              server=cfg["notifications"]["ntfy_server"], timeout=cfg["notifications"]["timeout_seconds"])
 
 
 def _yc(conn, http, now, cfg, source_info: dict) -> list:
@@ -524,10 +552,14 @@ def _run(conn, cfg, profile, args, now, live) -> int:
         counts = dict(result["counts"], failed_attempts=schedule.failed_attempts_today(conn, now),
                       error_type=(result["errors"][0].split(":")[0] if result["errors"] else None))
         sheet_url = f"https://docs.google.com/spreadsheets/d/{google['sheet_id']}" if google.get("sheet_id") else None
-        notify.send(counts, topic=os.environ.get("NTFY_TOPIC"),
-                    enabled=os.environ.get("NTFY_ENABLED", "true").lower() != "false",
-                    server=cfg["notifications"]["ntfy_server"], sheet_url=sheet_url,
-                    timeout=cfg["notifications"]["timeout_seconds"])
+        ntfy = {"topic": os.environ.get("NTFY_TOPIC"), "server": cfg["notifications"]["ntfy_server"],
+                "enabled": os.environ.get("NTFY_ENABLED", "true").lower() != "false",
+                "timeout": cfg["notifications"]["timeout_seconds"]}
+        if any("Log in again" in e for e in result["errors"]):   # Claude CLI login expired
+            if counts["failed_attempts"] == 1:
+                notify.alert("Claude login expired, so today's jobs weren't scored. Run claude, then /login.", **ntfy)
+        else:
+            notify.send(counts, sheet_url=sheet_url, **ntfy)
     printable = {k: v for k, v in result.items() if k not in ("report", "digest", "digest_ctx", "outreach")}
     print(json.dumps(printable, indent=2, default=str))
     print(f"Report: {result['report']}")
