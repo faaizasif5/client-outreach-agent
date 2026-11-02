@@ -7,26 +7,31 @@ from pipeline import drafter
 from pipeline.claude_cli import ClaudeError
 from schemas.ai_output import Draft, DraftBatch
 
-GOOD_BODY = ("Hi Sam,\nI saw the backend role at Rocketship.\n"
+GOOD_BODY = ("Hi Sam,\nScheduling software for clinics is a tricky problem to get right.\n"
              "At my current job I cut API latency by 30% with Redis caching.\n"
              "I'm a B2B contractor with 4 hours of US overlap.\n"
              "Open to a short call this week?\nAlex Example")
-STRETCH_BODY = ("Hi Sam,\nI cut API latency by 30% with Redis caching on a client project.\n"
+STRETCH_BODY = ("Hi Sam,\nScheduling software for clinics is a tricky problem.\n"
+                "I cut API latency by 30% with Redis caching on a client project.\n"
                 "I know the role asks for US-based candidates authorized to work in the US; I'm based in Pakistan.\n"
-                "I work as a B2B contractor, so there's no payroll or benefits setup, with US-hours overlap.\n"
+                "If a remote contractor setup could work, I've worked US hours before.\n"
                 "Would a short call make sense?\nAlex Example")
+
+
+HOOK = "scheduling software for clinics"
 
 
 def job(**kw):
     base = {"job_key": "k1", "outreach_type": "direct_email", "bucket": "eligible", "resume_key": "fullstack",
             "pitch_variant": None, "company": "Rocketship", "title": "Backend Engineer",
-            "location_text": "Remote", "description": "8-person startup. Django and Postgres."}
+            "location_text": "Remote", "description": "8-person startup building scheduling software for clinics. Django and Postgres."}
     base.update(kw)
     return base
 
 
-def draft(body=GOOD_BODY, subject="Backend Engineer: Django + Redis", outreach_type="direct_email", kit=None):
-    return Draft(job_key="k1", outreach_type=outreach_type, subject=subject, body=body, kit=kit)
+def draft(body=GOOD_BODY, subject="Backend Engineer: Django + Redis", outreach_type="direct_email", kit=None,
+          hook="scheduling software for clinics"):
+    return Draft(job_key="k1", outreach_type=outreach_type, subject=subject, body=body, kit=kit, hook=hook)
 
 
 def problems(d, j, profile, cfg):
@@ -68,10 +73,26 @@ def test_stretch_must_say_pakistan(profile, cfg):
     assert any("Pakistan" in p for p in problems(draft(GOOD_BODY), j, profile, cfg))
 
 
-def test_pitch_variants(profile, cfg):
-    cost = STRETCH_BODY.replace("I work as a B2B contractor", "As a cost-effective B2B contractor")
-    assert any("variant b" in p for p in problems(draft(cost), job(bucket="us_auth_stretch", pitch_variant="b"), profile, cfg))
-    assert problems(draft(cost), job(bucket="us_auth_stretch", pitch_variant="a"), profile, cfg) == []
+@pytest.mark.parametrize("change,needle", [
+    (("If a remote contractor setup could work", "As a cost-effective contractor"), "email sells"),
+    (("If a remote contractor setup could work", "There's no payroll or benefits setup"), "email sells"),
+    (("with Redis caching", "with pgvector search over 1536-dim embeddings"), "jargon"),
+    (("by 30%", "by 30% and costs by 30%"), "more than one metric"),
+    (("Scheduling software for clinics is a tricky problem.\n", ""), "doesn't use its hook"),
+])
+def test_email_must_open_on_listing_and_never_sell(profile, cfg, change, needle):
+    d = draft(STRETCH_BODY.replace(*change))
+    assert any(needle in p for p in problems(d, job(bucket="us_auth_stretch"), profile, cfg))
+
+
+def test_email_hook_must_come_from_the_listing(profile, cfg):
+    assert any("needs a hook" in p for p in problems(draft(hook=None), job(), profile, cfg))
+    assert any("needs a hook" in p for p in problems(draft(hook="AI for lawyers"), job(), profile, cfg))
+
+
+def test_email_too_long_rejected(profile, cfg):
+    long_body = GOOD_BODY.replace("Open to a short call", "word " * 150 + "Open to a short call")
+    assert any("too long" in p for p in problems(draft(long_body), job(), profile, cfg))
 
 
 @pytest.mark.parametrize("text,needle", [
@@ -139,8 +160,8 @@ def test_draft_jobs_sorts_accepted_rejected_missing(profile, cfg):
     def claude(prompt, model, schema, retries, timeout, effort=None):
         assert model == cfg["drafting"]["model"] and effort == cfg["drafting"]["effort"]
         return DraftBatch(results=[
-            Draft(job_key="a", outreach_type="direct_email", subject="s", body=GOOD_BODY),
-            Draft(job_key="b", outreach_type="direct_email", subject="s", body=GOOD_BODY.replace("30%", "99%")),
+            Draft(job_key="a", outreach_type="direct_email", subject="s", body=GOOD_BODY, hook=HOOK),
+            Draft(job_key="b", outreach_type="direct_email", subject="s", body=GOOD_BODY.replace("30%", "99%"), hook=HOOK),
             Draft(job_key="zzz", outreach_type="direct_email", subject="s", body=GOOD_BODY),
         ]), {"usage": {}}
     out = drafter.draft_jobs(jobs, profile, cfg, claude=claude)

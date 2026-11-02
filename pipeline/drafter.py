@@ -62,7 +62,7 @@ def job_block(job: dict, description_chars: int) -> str:
     questions = "\n".join(f"  - {q}" for q in job.get("form_questions") or [])
     return (f'<listing job_key="{job["job_key"]}">\n'
             f"outreach_type: {job['outreach_type']}\nbucket: {job['bucket']}\n"
-            f"pitch_variant: {job.get('pitch_variant') or 'n/a'}\nresume: {job['resume_key']}\n"
+            f"resume: {job['resume_key']}\n"
             f"Company: {job['company']}\nTitle: {job['title']}\nLocation: {job.get('location_text') or ''}\n"
             + (f"Form questions:\n{questions}\n" if questions else "")
             + f"network: {job.get('network_mode', 'none')}\n"
@@ -122,6 +122,42 @@ def _norm_link(value: str) -> str:
 def _own_links(profile: dict) -> set[str]:
     values = list((profile.get("links") or {}).values()) + [profile.get("answer_bank", {}).get("email", "")]
     return {_norm_link(v) for v in values if v and v != "..."}
+
+
+EMAIL_MAX_WORDS = 150   # the prompt asks for 90-130 in the body; slack so a few words aren't a rejection
+SALES_TALK = re.compile(COST.pattern + r"|\bno payroll\b|\bpayroll or benefits\b|\bbenefits setup\b", re.I)
+JARGON = re.compile(r"\b\d+[- ]?dim(ension(al)?)?s?\b|\bHNSW\b|\bANN index\b", re.I)
+STOPWORDS = set("""a an and are as at be by for from has have in into is it its of on or our that the their
+this to was we were will with you your who what how which all more over out they them""".split())
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z][a-z0-9'-]+", text.lower())
+
+
+def email_shape_problems(d, job: dict) -> list[str]:
+    """A cold email opens on something specific from the listing, stays short and never sells."""
+    problems = []
+    body = d.body or ""
+    lines = [l for l in body.strip().splitlines() if l.strip()]
+    words = len(" ".join(lines[:-1]).split()) if len(lines) > 1 else len(body.split())   # minus sign-off
+    if words > EMAIL_MAX_WORDS:
+        problems.append(f"email too long ({words} words, max {EMAIL_MAX_WORDS})")
+    listing = " ".join(_words(f"{job.get('title', '')} {job.get('description', '')}"))
+    hook = " ".join(_words(d.hook or ""))
+    company = set(_words(job.get("company") or ""))
+    key = [w for w in hook.split() if len(w) >= 4 and w not in STOPWORDS and w not in company]
+    if not hook or hook not in listing:
+        problems.append("email needs a hook: a phrase copied from the listing")
+    elif len(key) >= 2 and sum(w in set(_words(body)) for w in key) < 2:
+        problems.append("email doesn't use its hook from the listing")
+    if SALES_TALK.search(body):
+        problems.append("email sells: no cost, savings, payroll or benefits talk")
+    if JARGON.search(body):
+        problems.append("email has spec-sheet jargon (dimensions, index types)")
+    if body.count("%") > 1:
+        problems.append("email lists more than one metric")
+    return problems
 
 
 PITCH_MAX_WORDS = 75   # the prompt asks for 70; a little slack so one extra word isn't a rejection
@@ -223,11 +259,8 @@ def validate_draft(d, job: dict, profile: dict, cfg: dict) -> list[str]:
     if job["bucket"] != "eligible" and job["outreach_type"] == "direct_email":
         if "pakistan" not in d.body.lower():
             problems.append("stretch email must say the candidate is based in Pakistan")
-        cost_mentions = len(COST.findall(d.body))
-        if job.get("pitch_variant") == "b" and cost_mentions:
-            problems.append("variant b must not mention cost")
-        if job.get("pitch_variant") == "a" and cost_mentions > 1:
-            problems.append("variant a mentions cost more than once")
+    if job["outreach_type"] == "direct_email":
+        problems += email_shape_problems(d, job)
     if not cfg.get("offer_paid_trial") and TRIAL.search(text):
         problems.append("offers a trial while offer_paid_trial is off")
     return problems

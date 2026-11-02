@@ -35,14 +35,6 @@ def _cap(cfg, route) -> int:
     return min(cfg["caps"][name], cfg["hard_max"].get(name, cfg["caps"][name]))
 
 
-def next_variant(conn) -> str:
-    """Alternate a/b across all stretch pitches, live and dry-run."""
-    n = conn.execute("SELECT COUNT(*) FROM applications WHERE pitch_variant IS NOT NULL").fetchone()[0]
-    n += sum(1 for r in conn.execute("SELECT payload FROM dry_run_drafts").fetchall()
-             if json.loads(r["payload"]).get("pitch_variant"))
-    return "a" if n % 2 == 0 else "b"
-
-
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60]
 
@@ -239,11 +231,8 @@ def run_stage(conn, cfg: dict, profile: dict, items: list[dict], *, now: datetim
             t["network_mode"] = "none"
         else:
             t["network_mode"] = {"email": "after_accept_only", "portal": "applied", "network": "pitch"}[t["route"]]
-    variant = next_variant(conn)
-    for t in targets:   # stretch pitches alternate a/b (price-mention test)
-        if t["bucket"] != "eligible":
-            t["pitch_variant"] = variant
-            variant = "b" if variant == "a" else "a"
+    # The a/b price-mention test is retired (2026-11-03): no email talks about cost. Old rows keep
+    # their variant for the stats.
     if not targets:
         return out
 

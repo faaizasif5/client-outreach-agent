@@ -77,6 +77,7 @@ class Draft(BaseModel):
     job_key: str
     outreach_type: OutreachType
     subject: str | None = Field(default=None, max_length=120)
+    hook: str | None = Field(default=None, max_length=200)   # verbatim listing phrase the email opens on
     body: str = Field(default="", max_length=2000)
     kit: Kit | None = None
     network: NetworkNote | None = None

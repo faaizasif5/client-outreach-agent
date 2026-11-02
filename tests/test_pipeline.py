@@ -23,7 +23,7 @@ EMAIL_BODY = ("Hi,\nI cut API latency by 30% with Redis caching on a client proj
               "I work as a B2B contractor with 4 hours of US overlap.\nOpen to a short call?\nAlex Example")
 STRETCH_BODY = ("Hi,\nI cut API latency by 30% with Redis caching on a client project.\n"
                 "I know the role asks for US-based candidates; I'm based in Pakistan.\n"
-                "I work as a B2B contractor, so no payroll setup, with US-hours overlap.\n"
+                "I work as a B2B contractor, with US-hours overlap.\n"
                 "Would a short call make sense?\nAlex Example")
 
 
@@ -66,8 +66,10 @@ class FakeClaude:
                     results.append({"job_key": key, "outreach_type": otype, "subject": None, "body": "",
                                     "network": network})
                 elif otype == "direct_email":
+                    title = re.search(r"Title: (.+)", block).group(1).strip()   # the hook: a listing phrase
+                    body = (EMAIL_BODY if bucket == "eligible" else STRETCH_BODY) + stack_bit
                     results.append({"job_key": key, "outreach_type": otype, "subject": "Backend role",
-                                    "body": (EMAIL_BODY if bucket == "eligible" else STRETCH_BODY) + stack_bit,
+                                    "hook": title, "body": f"The {title} role caught my eye. " + body,
                                     "network": network, "tailored": tailored})
                 else:
                     results.append({"job_key": key, "outreach_type": otype, "subject": None, "body": "",

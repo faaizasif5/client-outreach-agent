@@ -22,25 +22,35 @@ Rules (all of them, always):
   "game-changer", "leverage", em-dash-heavy prose).
 - No links or email addresses except the candidate's own links listed below.
 
-direct_email (outreach_type "direct_email"):
-- subject: short and specific (role name + one hook), max 120 characters.
-- body: 4-6 short lines, then a sign-off with the candidate's name. 1-2 achievements copied from
-  the facts. End with one low-friction ask: a short call.
-- If the role is not explicitly worldwide, mention contractor availability (B2B) and
-  {overlap} hours of US overlap.
-- For resume "fde": lead with the candidate's client-facing facts (embedded with a client team,
-  US hours, live debugging on production/staging, feature calls).
-- For stretch jobs (bucket is not "eligible"), use this order:
-  1. Proof: one or two results relevant to the role, from the facts.
-  2. Honest acknowledgment, e.g. "I know the role asks for US-based candidates; I'm based in
-     Pakistan." For explicit_us_only, acknowledge their request directly and keep the ask
-     especially light.
-  3. Contractor angle: B2B contractor, no payroll or benefits setup, flexible engagement,
-     US-hours overlap (has worked full US hours with a US client before).
-     Pitch variant "a": say "cost-effective" exactly once in this step.
-     Pitch variant "b": no mention of cost at all.
-  4. Low-risk ask: a short call.{trial}
-  Never lead with price.
+direct_email (outreach_type "direct_email"): a short, human email from one engineer to a small
+team, not a sales letter. 90-130 words in the body, short paragraphs, then the candidate's name.
+- hook: copy ONE short phrase (3-12 words) verbatim from that job's listing: the most specific
+  thing about what they build or need. Open the email with it, in your own words: what it is and
+  why it's an interesting problem. Never open with the role name or "I'm applying for".
+- subject: short and specific (role name + what they build), max 120 characters.
+- Then 1-2 facts from the candidate section that connect to the hook, said plainly in a sentence
+  or two, as a person would say them ("I built a RAG document Q&A project with source-cited
+  answers"). At most one metric. No spec-sheet detail (vector dimensions, index types, version
+  numbers). One mention that the candidate uses Claude Code to move quickly from idea to working
+  code.
+- For resume "fde": connect the candidate's client-facing facts (embedded with a client team, US
+  hours, live debugging with the client) to the hook.
+- Location, only when the role is not explicitly worldwide: one plain sentence, e.g. "To be
+  upfront: I'm based in Pakistan, and I know the role is US-based." Then offer contracting as an
+  option, not a sale: "If a remote contractor setup could work, I've worked full US hours with a
+  US client before." For explicit_us_only, acknowledge their request directly. Never talk about
+  cost, savings, payroll or benefits.
+- Ending: if the listing asks applicants for something (answers to questions, a portfolio), say
+  the resume is attached and offer exactly that. Otherwise a light line such as "Happy to share
+  more if it's useful."{trial} No "short call?" as a reflex.
+  Good (stretch, remote US): "Hi Helmsted team,\n\nAgents that do the actual planning and tax work
+  for wealth advisors is a hard problem, especially retrieval over millions of documents with
+  permissioned access to client data.\n\nI'm a full-stack engineer at a software services company, and I built a RAG
+  document Q&A project with source-cited, streaming answers on pgvector search. I use Claude Code
+  daily to move from idea to working code quickly.\n\nTo be upfront: I'm based in Pakistan, and I
+  know the role is US-based. If a remote contractor setup could work, I've worked full US hours
+  with a US client before.\n\nMy resume is attached, and I'm happy to answer the questions from
+  the JD.\n\nAlex Example"
 
 application_brief (outreach_type "application_brief"): leave subject null and body "".
 - kit.cover_note: 3-5 lines for the portal's cover letter box, same rules as emails.
@@ -89,7 +99,8 @@ tailored resume (only when the job says "tailor: yes"; otherwise set "tailored" 
 
 Output: ONLY a JSON object, no prose, no code fences:
 {{"results": [{{"job_key": "...", "outreach_type": "direct_email|application_brief",
-"subject": "..." or null, "body": "...", "kit": null or {{"cover_note": "...",
+"subject": "..." or null, "hook": "verbatim listing phrase (direct_email) or null", "body": "...",
+"kit": null or {{"cover_note": "...",
 "form_answers": [{{"question": "...", "answer": "..."}}]}}, "network": null or
 {{"connection_note": null, "after_accept_message": "..."}}}}]}}
 Return exactly one result per job below, with the outreach_type given for that job.

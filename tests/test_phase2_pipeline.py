@@ -75,12 +75,12 @@ def test_stretch_jobs_get_email_never_kit(env):
             assert r["outreach_type"] == "direct_email"
 
 
-def test_stretch_email_has_pitch_variant(env):
+def test_stretch_email_has_no_pitch_variant_any_more(env):
     conn = env[0]
     run(env, FakeClaude())
     payloads = [json.loads(r["payload"]) for r in conn.execute(
         "SELECT d.payload FROM dry_run_drafts d JOIN jobs j ON j.job_key=d.job_key WHERE j.bucket != 'eligible'")]
-    assert payloads and all(p["pitch_variant"] in ("a", "b") for p in payloads)
+    assert payloads and all(p["pitch_variant"] is None for p in payloads)   # a/b test retired
 
 
 def live_google():

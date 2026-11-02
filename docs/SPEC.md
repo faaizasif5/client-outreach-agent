@@ -594,16 +594,23 @@ Written in Claude call #2 alongside the emails and kits (no extra call). `Status
   the listing didn't ask for; that limit is skipped for generic listings naming under 2 technologies, and
   form answers about a project may name that project's stack. In pitch emails and LinkedIn pitches,
   mention once that I work across the stack with agentic coding via Claude Code.
-- Mention contractor availability + overlap hours when the role isn't explicitly worldwide.
-- For all stretch sub-buckets, value-first pitch in this order:
-  1. Proof: one or two specific results relevant to the role (from `facts`)
-  2. Honest acknowledgment: "I know the role asks for US-based candidates; I'm based in Pakistan"
-  3. Contractor angle: B2B contractor, no payroll or benefits setup, flexible engagement, US-hours overlap (I've worked full US hours with a US client before)
-  4. Low-risk ask: a short call; if `offer_paid_trial: true` in `config.yaml`, also offer a short paid trial on a real task (off by default until I confirm)
-  - Price variant A/B: variant `a` mentions "cost-effective" once in step 3; variant `b` makes no cost mention. Assigned alternately, stored per application, reply rates compared in the weekly stats. Never lead with price, never name a rate in the first email.
+- Cold emails (changed 2026-11-03: the old fixed proof / acknowledgment / contractor-pitch / "short call?"
+  order read like a form letter): a short, human email, 90-130 words in the body.
+  1. Open on a `hook`: a phrase Claude copies verbatim from the listing (the most specific thing they build
+     or need), said in my own words with why it's an interesting problem. Never open with the role name.
+  2. 1-2 facts that connect to it, in plain words; at most one metric; no spec-sheet detail (vector
+     dimensions, index types); one mention of using Claude Code to move quickly.
+  3. When the role isn't explicitly worldwide, one plain honest sentence ("To be upfront: I'm based in
+     Pakistan, and I know the role is US-based.") and contracting offered as an option, not sold.
+  4. A light ending that fits the listing: if it asks applicants for something (answers to its questions),
+     say the resume is attached and offer exactly that; otherwise "happy to share more". If
+     `offer_paid_trial: true`, also offer a short paid trial on a real task (off by default).
+  - Code rejects: a missing hook or one not found in the listing, a body that doesn't use its hook,
+    over 150 words, cost / savings / payroll / benefits talk, spec-sheet jargon, more than one metric.
+  - The price-mention A/B test (variant `a` said "cost-effective") is retired; no email talks about cost.
+    Old applications keep their variant for the stats. Never name a rate in the first email.
   - Never imply US work authorization or US citizenship.
-- End with one low-friction ask (short call).
-- Output per job: `{job_key, outreach_type, subject, body, kit?, network?, tailored?}`, validated with Pydantic. `outreach_type` is `direct_email`, `application_brief` or `network_pitch`; `network` carries only the after-accept message (any connection note is dropped).
+- Output per job: `{job_key, outreach_type, subject, hook?, body, kit?, network?, tailored?}`, validated with Pydantic. `outreach_type` is `direct_email`, `application_brief` or `network_pitch`; `network` carries only the after-accept message (any connection note is dropped).
 
 **Never in the email body:** scores, reasons, evidence. Those go only in the digest.
 
@@ -760,7 +767,7 @@ CREATE TABLE applications (
   company_norm TEXT NOT NULL,
   outreach_type TEXT NOT NULL,       -- direct_email | application_brief
   bucket TEXT NOT NULL,              -- eligible | remote_us_stretch | us_auth_stretch | explicit_us_only
-  pitch_variant TEXT,                -- a | b (stretch price-mention test)
+  pitch_variant TEXT,                -- a | b (stretch price-mention test, retired 2026-11-03)
   resume_pdf_path TEXT,              -- standard or tailored PDF actually attached
   resume_key TEXT NOT NULL,
   status TEXT NOT NULL,
