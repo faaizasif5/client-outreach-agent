@@ -3,7 +3,10 @@
 Personal tool. `docs/SPEC.md` is the source of truth (section 0 lists every change from the
 original plan); if something here or in your own ideas conflicts with it, follow the spec and flag
 the conflict. Keep the spec, this file and README.md in line when behaviour changes. This repo is
-PRIVATE (the spec contains a real profile). Never commit `.env`, `credentials.json`, tokens,
+PUBLIC: no real names, employers, client/project names, metrics, contact details or resume file
+names in any tracked file (spec, prompts, config, tests). Use the fake data from
+`candidate/profile.example.yaml`; personal values go in `candidate/profile.yaml` (e.g.
+`resume_filename`). Never commit `.env`, `credentials.json`, tokens,
 `data/`, `candidate/profile.yaml`, `candidate/resumes/`, `candidate/latex/`, `candidate/bullets.yaml`,
 `snapshots/`, `applications/`, `logs/`, `reports/`, `tools/`.
 

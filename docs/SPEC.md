@@ -34,6 +34,8 @@ updated to match, and this list is the quick summary.
   worth a manual look); the full report with labels stays in `reports/<date>.md`.
 - **Sheets:** friendly status labels, styled clickable links, a styled layout re-applied every run,
   LinkedIn status `closed`, and an `Archive` tab that finished rows move to automatically.
+- **Public repo:** the repo is public, so this spec, the prompts, config and tests use fake profile data
+  only. The real profile, resume file name and contact details live in the gitignored `candidate/profile.yaml`.
 - **Tailored resumes:** plain-marker templates built from my `.tex` files (no Jinja: not in the library list).
 
 ## 1. Goal

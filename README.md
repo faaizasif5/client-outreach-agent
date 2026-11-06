@@ -35,4 +35,4 @@ first logon/unlock/wake. Pause or resume it with `main.py scheduler off` / `on` 
 - `docs/SPEC.md`: full spec and the decisions made while building it (section 0).
 - `CLAUDE.md`: rules and conventions for working on this repo with Claude Code.
 
-Private repo: it contains my real profile.
+Public repo: it ships fake example data only. My real profile, resumes and contact details stay in gitignored files (`candidate/profile.yaml`, `candidate/resumes/`, `.env`).

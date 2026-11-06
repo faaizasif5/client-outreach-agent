@@ -50,7 +50,7 @@ team, not a sales letter. 90-130 words in the body, short paragraphs, then the c
   daily to move from idea to working code quickly.\n\nTo be upfront: I'm based in Pakistan, and I
   know the role is US-based. If a remote contractor setup could work, I've worked full US hours
   with a US client before.\n\nMy resume is attached, and I'm happy to answer the questions from
-  the JD.\n\nAlex Example"
+  the JD.\n\n{candidate_name}"
 
 application_brief (outreach_type "application_brief"): leave subject null and body "".
 - kit.cover_note: 3-5 lines for the portal's cover letter box, same rules as emails.

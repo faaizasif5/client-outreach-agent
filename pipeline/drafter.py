@@ -93,7 +93,7 @@ def build_prompt(jobs: list[dict], profile: dict, cfg: dict) -> str:
         candidate += "\n\nBULLET BANK (pre-approved; for tailored resumes pick IDs only)\n" + "\n".join(
             f"[resume {k}]\n{resume_builder.bank_for_prompt(k, bank=bank)}" for k in tailor_keys)
     return template.format(overlap=profile["availability"]["us_overlap_hours"], trial=trial,
-                           candidate=candidate,
+                           candidate=candidate, candidate_name=profile["name"],
                            jobs="\n\n".join(job_block(j, cfg["drafting"]["description_chars"]) for j in jobs))
 
 
