@@ -27,7 +27,7 @@ One-time setup: `candidate/profile.yaml`, resume PDFs, `credentials.json`, then
 `main.py setup-google` and `main.py yc-login`.
 
 Daily schedule: `scripts\install_task.ps1 -Live` registers a Windows task that runs once a day on the
-first logon/unlock/wake. Pause or resume it with `main.py scheduler off` / `on` (`status` to check).
+first logon, unlock, wake or hourly check. Pause or resume it with `main.py scheduler off` / `on` (`status` to check).
 
 ## Docs
 

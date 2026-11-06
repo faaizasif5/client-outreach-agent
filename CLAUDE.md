@@ -24,6 +24,11 @@ Decisions that changed the original spec (details in SPEC section 0):
   Claude Code.
 - LinkedIn: requests go out WITHOUT a note; one message after they accept; no numbers/metrics in
   messages; `network.is_pitch` keeps the one-company rule.
+- Cold emails: open on a hook copied from the listing, plain facts, honest location line, never
+  cost/savings/payroll talk (checked in code). The price A/B test is retired.
+- Logging: `logs/<date>.log` (run start, one line per step, errors, end; pruned after 30 days).
+  Crashes are recorded; expired Google/Claude logins push an alert right away.
+- Resume attachment name comes from `resume_filename` in the gitignored profile, not `config.yaml`.
 - YC: three pages (`config/yc_selectors.yaml`), one read with the user's own saved session
   (`main.py yc-login`); never store or type a password; never send logged-in pages to Claude.
 - Never pay to apply: gated job-board apply links go to manual review.
@@ -53,7 +58,7 @@ Decisions that changed the original spec (details in SPEC section 0):
 - No date: relative text ("3 days ago") -> ATS API date -> newest-first feed evidence (after a
   baseline run). Otherwise `age_unknown` -> uncertain list, never drafted.
 
-## Claude CLI flags (verified with `claude --help`, v2.1.302)
+## Claude CLI flags (verified with `claude --help`, v2.1.318)
 `claude -p --model <m> --effort <e> --output-format json --tools "" --no-session-persistence
 --strict-mcp-config --setting-sources project --system-prompt <short>`, prompt via stdin, cwd =
 empty sandbox dir. Do NOT use `--bare` (it ignores the Pro OAuth login). Tests must never call the
@@ -82,3 +87,4 @@ Profile: `candidate/profile.yaml` (from `profile.example.yaml`). Resume PDFs in 
 - Tests use saved fixtures in `tests/fixtures/`, never live sites.
 - Be polite to sources: 2-3 s between requests per host, on-disk cache in `data/cache/`.
 - Work on the `dev` branch. Do not commit yourself: at the end of each task, give the user a commit message to run.
+- Commit messages never include a `Co-Authored-By: Claude` (or any AI) trailer.

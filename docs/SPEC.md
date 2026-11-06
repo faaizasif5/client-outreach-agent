@@ -7,7 +7,7 @@
 - Keep the stack as listed. Do not add frameworks or infrastructure not named here.
 - Anything in "Deferred Until After MVP" is out of scope.
 
-## 0. Current State and Changes from the Original Plan (updated 2026-10-25)
+## 0. Current State and Changes from the Original Plan (updated 2026-11-07)
 Everything below is built. These changes were decided while building; the sections that follow are
 updated to match, and this list is the quick summary.
 - **Build order:** Phase 2 and 3 were built before Phase 1's calibration finished (approved). Live mode
@@ -37,6 +37,13 @@ updated to match, and this list is the quick summary.
 - **Public repo:** the repo is public, so this spec, the prompts, config and tests use fake profile data
   only. The real profile, resume file name and contact details live in the gitignored `candidate/profile.yaml`.
 - **Tailored resumes:** plain-marker templates built from my `.tex` files (no Jinja: not in the library list).
+- **Cold emails:** open on a short phrase copied from the listing (the hook), plain facts, one honest
+  location line when the role isn't worldwide, and never any cost, savings, payroll or benefits talk
+  (all checked in code). The price-mention A/B test is retired.
+- **Logging and alerts:** one log line per run start, step, error and end in `logs/<date>.log`, pruned
+  after 30 days. Crashes are recorded on the `runs` row; an expired Google or Claude login gets a phone
+  push right away, any other crash on the last attempt of the day.
+- **No AI co-author lines:** commits carry no `Co-Authored-By: Claude` trailer.
 
 ## 1. Goal
 A personal tool that finds fresh, remote-friendly software engineering jobs at startups, decides which ones I'm genuinely eligible for, picks the right stack-specific resume, and prepares either a Gmail draft (direct email) or an application brief (portal jobs). My daily input: about 10-15 minutes for review (digest + email drafts + LinkedIn), plus optional, time-boxed portal applications.
@@ -949,7 +956,7 @@ Status (2026-10-25): all items built; live mode on. Phase 1 calibration labeling
 - [x] Network tab: YC founder links (via YC scraper), team-page links, search-link fallback, one message after they accept (no notes)
 - [x] Reply detection
 - [x] Auto-mark `no_response` 21 days after sending with no reply
-- [x] Weekly stats in Monday digest (incl. reply rate by role type: fde vs others, and pitch variant a vs b)
+- [x] Weekly stats in Monday digest (incl. reply rate by role type: fde vs others, and pitch variant a vs b for rows from before the A/B test was retired)
 - [x] Tailored resumes (section 11a): LaTeX templates, bullet bank, Tectonic compile, 1-page and fact checks, fallback to standard PDF
 - [x] Add We Work Remotely if not done
 - [x] YC scraper (section 7a): Playwright + selector YAML, health checks, snapshot saving, automatic selector repair, manual-fix prompt, auto-disable after 2 failed weeks
