@@ -27,7 +27,7 @@ One-time setup: `candidate/profile.yaml`, resume PDFs, `credentials.json`, then
 `main.py setup-google` and `main.py yc-login`.
 
 Daily schedule: `scripts\install_task.ps1 -Live` registers a Windows task that runs once a day on the
-first logon/unlock/wake. Pause or resume it with `main.py scheduler off` / `on` (`status` to check).
+first logon, unlock, wake or hourly check. Pause or resume it with `main.py scheduler off` / `on` (`status` to check).
 
 ## Docs
 
@@ -35,3 +35,4 @@ first logon/unlock/wake. Pause or resume it with `main.py scheduler off` / `on` 
 - `docs/SPEC.md`: full spec and the decisions made while building it (section 0).
 - `CLAUDE.md`: rules and conventions for working on this repo with Claude Code.
 
+Public repo: it ships fake example data only. My real profile, resumes and contact details stay in gitignored files (`candidate/profile.yaml`, `candidate/resumes/`, `.env`).

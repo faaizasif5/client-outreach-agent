@@ -294,3 +294,17 @@ def test_prune_logs_keeps_recent_and_other_files(tmp_path):
         (tmp_path / name).write_text("x")
     assert main.prune_logs(tmp_path, 30, NOW) == 1
     assert sorted(p.name for p in tmp_path.iterdir()) == ["2026-10-01.log", "2026-10-24.log", "yc_rescore.out"]
+
+
+def test_profile_resume_filename_overrides_public_default(cfg, profile):
+    assert cfg["outreach"]["attachment_filename"] == "Resume.pdf"
+    main.apply_profile_overrides(cfg, profile)
+    assert cfg["outreach"]["attachment_filename"] == "Alex_Example_Resume.pdf"
+    main.apply_profile_overrides(cfg, {"name": "No Override"})
+    assert cfg["outreach"]["attachment_filename"] == "Alex_Example_Resume.pdf"
+
+
+def test_draft_prompt_signs_with_the_profile_name(cfg, profile):
+    from pipeline import drafter
+    text = drafter.build_prompt([], profile, cfg)
+    assert "Alex Example\"" in text and "{candidate_name}" not in text

@@ -44,6 +44,13 @@ def load_profile(root: Path = ROOT, path: Path | None = None) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def apply_profile_overrides(cfg: dict, profile: dict) -> dict:
+    """Personal values live in the gitignored profile, not the public config."""
+    if profile.get("resume_filename"):
+        cfg["outreach"]["attachment_filename"] = profile["resume_filename"]
+    return cfg
+
+
 # ---------------------------------------------------------------- per-listing processing
 
 def _company_domain(raw: RawJob) -> str | None:
@@ -444,6 +451,7 @@ def main(argv=None) -> int:
         print(label_command(conn, files))
         return 0
     profile = load_profile(path=args.profile)
+    apply_profile_overrides(cfg, profile)
     if args.command == "setup-google":
         print(setup_google(conn, profile))
         return 0

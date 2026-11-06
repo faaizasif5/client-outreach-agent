@@ -3,6 +3,7 @@
 # `production`/`projects` skill here.
 name: Alex Example
 location: Lahore, Pakistan (PKT, UTC+5)
+resume_filename: Alex_Example_Resume.pdf   # optional: name of the attached PDF (default: outreach.attachment_filename)
 availability:
   arrangement: [contractor, B2B]
   us_overlap_hours: 4

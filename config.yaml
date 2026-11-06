@@ -250,7 +250,7 @@ outreach:
   # Safety switch. false = drafts/kits go to reports/dry-run/ only, even without --dry-run.
   # Flip to true after calibration (Phase 1 exit criteria) and your approval.
   live_enabled: true           # approved by you on 2026-10-24
-  attachment_filename: Resume.pdf
+  attachment_filename: Resume.pdf   # default; candidate/profile.yaml `resume_filename` overrides it
   pending_kit_days: 7          # portal rows still pending after this -> expired
   complete_feeds: [wwr]        # feeds that list every active job (disappearing = closed)
   # Applicant-tracking confirmation subjects (spec section 11, sync step 5)
