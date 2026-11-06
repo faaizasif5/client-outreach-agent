@@ -1,0 +1,353 @@
+# Client Outreach Agent configuration (spec sections 2, 8, 9, 10, 19).
+# Regexes are Python `re` syntax, matched case-insensitively unless they use (?-i:...).
+# YAML single-quoted strings: backslashes are literal, '' is a single quote.
+
+max_age_days: 14
+
+# Daily volume (section 2). Code clamps to hard_max.
+caps:
+  email_drafts: 6
+  portal_kits: 2
+  linkedin_requests: 3
+hard_max:
+  email_drafts: 10
+  portal_kits: 5
+
+# Stretch buckets (section 9)
+stretch_min_fit: 70
+stretch_max_team_size: 100
+pitch_explicit_us_only: true
+offer_paid_trial: false
+# LinkedIn connection requests go out WITHOUT a note (free tier allows only a few a month); the pitch
+# is one message sent after they accept. No note budget needed.
+
+# Scoring (section 10)
+scoring:
+  # Spec section 10 says haiku. Using sonnet (medium effort) for calibration by choice; switch
+  # back to haiku and/or effort low if Pro usage is too high. effort: low|medium|high|null.
+  model: sonnet
+  effort: medium
+  max_jobs: 30
+  min_fit: 60
+  strong_fit: 80
+  description_chars: 1600     # ~400 tokens per job
+  prompt_char_budget: 90000   # drop lowest keyword-score jobs above this
+  timeout_seconds: 600
+  retries: 2
+
+sources:
+  hn:
+    enabled: true
+  remoteok:
+    enabled: true
+  yc:
+    enabled: true              # YC_ENABLED=false in .env also turns it off (auto-set after 14 broken days)
+  wwr:
+    enabled: true
+    feeds:
+      - https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss
+      - https://weworkremotely.com/categories/remote-back-end-programming-jobs.rss
+      - https://weworkremotely.com/categories/remote-front-end-programming-jobs.rss
+
+http:
+  user_agent: 'client-outreach-agent/0.1 (personal job search; polite, cached)'
+  min_delay_seconds: 2.0
+  max_delay_seconds: 3.0
+  cache_ttl_hours: 6
+  timeout_seconds: 30
+  blocked_hosts: [linkedin.com]   # never fetched, ever (section 11, Network rules)
+
+keywords:
+  # A title piece must contain one of these to be considered an engineering role.
+  role_title_include:
+    - engineer
+    - engineering
+    - developer
+    - '\bdev\b'
+    - '\bswe\b'
+    - '\bsde\b'
+    - programmer
+    - full[- ]?stack
+    - back[- ]?end
+    - front[- ]?end
+    - forward deployed
+    - software
+    - member of technical staff
+    - '\bmts\b'
+  # A title piece containing one of these is not an IC engineering role.
+  role_title_exclude:
+    - manager
+    - director
+    - head of
+    - '\bvp\b'
+    - vice president
+    - '\bchief\b'
+    - '\bcto\b'
+    - recruiter
+    - sales
+    - account executive
+    - marketing
+    - designer
+    - intern(ship)?\b
+  # Extra role-title keywords that boost the pre-match score (plus all resume keywords).
+  role_title_boost:
+    - forward deployed
+    - deployment engineer
+    - solutions engineer
+    - customer engineer
+    - implementation engineer
+    - full[- ]?stack
+    - product engineer
+
+eligibility:
+  closed:
+    - '\bpositions? (has been |have been |is |are |was |were )?(now )?filled\b'
+    - '\b(role|position|job|opening)s? (is |are |has been |have been )?(now )?closed\b'
+    - '^\W*(filled|closed)\b'
+    - '(?-i:\b(FILLED|CLOSED)\b)'
+    - '\bno longer (hiring|accepting|available|open)\b'
+    - '\bwe(''ve| have) (now )?filled\b'
+  regulated:
+    - '\bsecurity clearance\b'
+    - '\b(ts/sci|top secret|secret) clearance\b'
+    - '\bclearance (is )?required\b'
+    - '\bitar\b'
+    - '\bexport[- ]control'
+    - '\bu\.?s\.? persons?\b'
+  regulated_context:
+    - '\b(government|federal|defen[cs]e|dod|military|public sector|national security|intelligence community)\b'
+  citizenship:
+    - '\bu\.?s\.? citizens?(hip)?\b'
+    - '\bcitizens? of the united states\b'
+    - '\bamerican citizens?\b'
+    - '\bmust be (a )?citizen\b'
+  no_contractors:
+    - '\bno (contractors|freelancers|agencies|c2c|corp[- ]to[- ]corp)\b'
+    - '\bw-?2 (only|employees only|employment only)\b'
+    - '\bonly w-?2\b'
+    - '\bmust be (a |an )?w-?2\b'
+    - '\bnot (open to|considering|accepting) (contractors|freelancers|c2c)\b'
+  travel_required:
+    - '\bfrequent(ly)? travel'
+    - '\btravel(l?ing)? frequently\b'
+    - '\bregular(ly)? travel'
+    - '\bextensive travel\b'
+    - '\bon[- ]?site (with|at) (our )?(customers?|clients?)\b'
+    - '\btravel (is )?required\b'
+  travel_occasional:
+    - '\boccasional(ly)? travel'
+    - '\btravel occasionally\b'
+    - '\bfew times (a|per) year\b'
+    - '\b(quarterly|annual|yearly) (offsite|off-site|retreat|meetup|onsite)s?\b'
+    - '\bwilling(ness)? to travel\b'
+  travel_threshold_percent: 25
+  # Applied to the location text (HN header segments, RemoteOK/WWR location fields) and title.
+  onsite_location:
+    - '\bon[- ]?site\b'
+    - '\bin[- ]office\b'
+    - '\bin[- ]person\b'
+    - '\boffice[- ]based\b'
+  hybrid_location:
+    - '\bhybrid\b'
+  # Applied to the whole description (strong statements only).
+  onsite_description:
+    - '\bnot (a )?(fully )?remote\b'
+    - '\bno remote\b'
+    - '\bthis (is an?|role is) (on[- ]?site|in[- ]office|in[- ]person)\b'
+    - '\b\d days? (a|per) week in (the |our )?office\b'
+  hybrid_description:
+    - '\bthis (is a |role is )?hybrid\b'
+    - '\bhybrid (role|position|schedule|work)\b'
+  remote:
+    - '\bremote(ly)?\b'
+    - '\bdistributed\b'
+    - '\bwork from home\b'
+    - '\bwfh\b'
+    - '\bwork from anywhere\b'
+    - '\banywhere\b'
+    - '\bworld\s?wide\b'
+  worldwide:
+    - '\bworld\s?wide\b'
+    - '\banywhere\b(?! in (the )?(us|u\.s\.?|usa|united states|north america|americas|europe|eu|canada|uk|latam))'
+    - '\bglobal(ly)?\b'
+    - '\b(all|any) (time ?zones?|countries|country|locations?)\b'
+  asia_ok:
+    - '\bpakistan\b'
+    - '\bsouth asia\b'
+    - '\bapac\b'
+    - '\basia\b'
+    - '\basian time ?zones?\b'
+    - '\b(pkt|(utc|gmt) ?\+ ?0?5)\b'
+  # Region words (fragments); code builds location and strict description patterns from them.
+  us_words:
+    - '(?-i:US)'
+    - 'u\.s\.(a\.)?'
+    - 'usa'
+    - 'united states'
+    - 'north america'
+    - 'americas'
+    - 'pst|pdt|est|edt|cst|cdt|mst|mdt'
+    - '(pacific|eastern|central|mountain) (standard )?time'
+  other_region_words:
+    - 'eu|europe|european|emea|cet|cest|bst|wet|eet'
+    - 'uk|united kingdom|england|scotland|ireland|germany|france|spain|portugal|italy|netherlands|belgium|poland|sweden|norway|denmark|finland|switzerland|austria|czechia|romania|ukraine'
+    - 'canada|canadian|latam|latin america|south america|mexico|brazil|argentina|colombia|chile'
+    - 'india|australia|new zealand|israel|africa|nigeria|kenya|egypt|japan|singapore|philippines|vietnam|indonesia'
+  us_auth:
+    - '\bauthori[sz]ed to work in the (us|u\.s\.|usa|united states)\b'
+    - '\beligible to work in the (us|u\.s\.|usa|united states)\b'
+    - '\b(us|u\.s\.) work authori[sz]ation\b'
+    - '\bwork authori[sz]ation (in|for) the (us|u\.s\.|united states)\b'
+    - '\bgreen card\b'
+    - '\b(us|u\.s\.) (citizens?|citizenship|permanent residents?)\b'
+    - '\bcitizens? of the united states\b'
+    - '\bmust be (a )?citizen\b'
+    - '\bmust (be )?(located|based|reside|residing|live|living) in the (us|u\.s\.|usa|united states)\b'
+    - '\b(us|u\.s\.)[- ]based (only|candidates|applicants)\b'
+    - '\b(us|u\.s\.) residents? only\b'
+    - '\bmust be (in|within) the (us|u\.s\.|usa|united states)\b'
+  no_sponsorship:
+    - '\bno (visa )?sponsorship\b'
+    - '\b(unable|not able) to sponsor\b'
+    - '\b(cannot|can ?not|can''t|will not|won''t|do not|don''t) (provide )?sponsor'
+  explicit_us_only:
+    - '\b(do not|don''t|please do not|please don''t) apply (if|unless) you(''re| are)( not)? (currently )?(located|based|living|residing) (in|within) the (us|u\.s\.|usa|united states)\b'
+    - '\b(do not|don''t) apply from outside (of )?the (us|u\.s\.|usa|united states)\b'
+    - '\b(cannot|can''t|can ?not|are unable to|will not|won''t|do not|don''t) (consider|accept|hire|employ|review) (any )?(candidates|applicants|applications|people|anyone)( who are)?( located| based| living)? outside (of )?the (us|u\.s\.|usa|united states)\b'
+    - '\b(applications|applicants|candidates) (from )?outside (of )?the (us|u\.s\.|usa|united states) will not be considered\b'
+    - '\bno (international|non-us|non-u\.s\.) (candidates|applicants)\b'
+  full_us_hours:
+    - '\b(work|working|available|availability)( during)? (us|u\.s\.|pst|pacific|est|eastern|central|cst|mst|mountain)( time)?( business| working| office)? hours\b'
+    - '\b9 ?(am)? ?(-|–|to) ?5 ?(pm)? ?(pst|pt|est|et|cst|ct|pacific|eastern)\b'
+    - '\bfull (us|u\.s\.) (business |working )?hours\b'
+  contractor_friendly:
+    - '\bcontractors? (are )?welcome\b'
+    - '\bopen to contractors\b'
+    - '\bb2b\b'
+    - '\bdeel\b'
+    - '\boyster\b'
+    - '\bremote\.com\b'
+  relocation:
+    - '\breloca(te|tion)\b'
+  sponsorship:
+    - '\b(visa )?sponsorship\b'
+    - '\bsponsor (your |a )?visa\b'
+
+# ---------------------------------------------------------------- Phase 2
+
+# Claude call #2 (spec section 11): drafts and kits for the shortlist only.
+drafting:
+  model: sonnet
+  effort: medium
+  timeout_seconds: 600
+  retries: 2
+  description_chars: 2400
+  default_questions:
+    - Why do you want to work here?
+    - Tell us about a project you're proud of.
+
+outreach:
+  # Safety switch. false = drafts/kits go to reports/dry-run/ only, even without --dry-run.
+  # Flip to true after calibration (Phase 1 exit criteria) and your approval.
+  live_enabled: true           # approved by you on 2026-10-24
+  attachment_filename: Resume.pdf
+  pending_kit_days: 7          # portal rows still pending after this -> expired
+  complete_feeds: [wwr]        # feeds that list every active job (disappearing = closed)
+  # Applicant-tracking confirmation subjects (spec section 11, sync step 5)
+  ats_confirmation:
+    - '\bthank(s| you) for (applying|your application)\b'
+    - '\b(we(''ve| have) )?received your application\b'
+    - '\byour application (to|for|at)\b'
+    - '\bapplication (received|submitted|confirmation)\b'
+
+notifications:
+  ntfy_server: https://ntfy.sh
+  timeout_seconds: 10
+
+schedule:
+  max_attempts_per_day: 3
+  stale_lock_minutes: 60
+
+# ---------------------------------------------------------------- Phase 3
+
+followup:
+  recheck_draft_days: 3        # freshness check #3: unsent drafts older than this are re-checked
+  expire_draft_days: 7         # ...and deleted + expired after this (or as soon as the job closes)
+  no_response_days: 21         # sent with no reply after this -> no_response
+stats:
+  weekday: 0                   # Monday (Karachi time): weekly stats in the digest
+  stretch_flag_sent: 40        # flag a stretch sub-bucket with this many sends and no positive replies
+tailoring:
+  min_fit: 80                  # spec 11a: tailored resumes for top matches only
+  compiler: tools/tectonic/tectonic.exe
+yc:
+  repair_model: sonnet         # only used when the scraper is broken (max once a week)
+digest:
+  delivery: send               # send = HTML email to yourself each run | draft = Gmail draft (spec default)
+sheets:
+  auto_archive: true           # finished rows (discarded/expired/rejected, LinkedIn skipped/closed) -> Archive tab
+
+# ---------------------------------------------------------------- stack matching
+# Technology -> how it appears in text (regex, case-insensitive; (?-i:...) for case-sensitive).
+# Used to read a listing's stack, map your profile skills, and check every draft names only
+# technologies you have.
+stack:
+  vocab:
+    python: ['python']
+    typescript: ['typescript', '\bts\b']
+    javascript: ['javascript', '(?<![.\w])js\b']
+    react: ['react(\.js)?(?![- ]native)']
+    react native: ['react[- ]native']
+    next.js: ['next\.?js', '\bnext\b(?=\s*(,|/|and|or)\s)']
+    vue: ['vue(\.js)?']
+    angular: ['angular(js)?']
+    node.js: ['node(\.js|js)?\b']
+    nestjs: ['nest\.?js']
+    django: ['django(?![- ]rest)']
+    django rest framework: ['django[- ]rest[- ]framework', '\bdrf\b']
+    fastapi: ['fast ?api']
+    flask: ['flask']
+    rest apis: ['rest(ful)?[- ]apis?']
+    graphql: ['graphql']
+    sql: ['\bsql\b']
+    postgresql: ['postgres(ql)?']
+    mysql: ['mysql']
+    mongodb: ['mongo(db)?']
+    redis: ['redis']
+    aws: ['\baws\b', 'amazon web services']
+    gcp: ['\bgcp\b', 'google cloud']
+    azure: ['azure']
+    docker: ['docker']
+    kubernetes: ['kubernetes', '\bk8s\b']
+    terraform: ['terraform']
+    ci/cd: ['ci/cd', '\bci\b']
+    llm apis: ['\bllms?\b', 'large language models?', 'openai', '\bgpt', 'gemini', 'anthropic', 'claude api']
+    rag: ['\brag\b', 'retrieval[- ]augmented']
+    vector search: ['pgvector', 'pinecone', 'vector (database|db|search)']
+    ai agents: ['ai[- ]agents?', 'agentic(?! coding)']
+    langchain: ['langchain']
+    claude code: ['claude code', 'agentic coding']
+    go: ['golang', '(?-i:\bGo\b)(?=\s*(,|/|\)|and\b|or\b))', '(?<=\w[ (/])(?-i:Go\b)']   # capital "Go" mid-sentence
+    rust: ['\brust\b']
+    java: ['\bjava\b(?!script)']
+    kotlin: ['kotlin']
+    swift: ['\bswift\b']
+    ruby: ['\bruby\b', 'rails']
+    php: ['\bphp\b']
+    c#: ['c#']
+    .net: ['(?<![\w])\.net\b']
+    c++: ['c\+\+']
+    kafka: ['kafka']
+    spark: ['\bspark\b']
+    airflow: ['airflow']
+    dbt: ['\bdbt\b']
+    snowflake: ['snowflake']
+    pytorch: ['pytorch']
+    tensorflow: ['tensorflow']
+    firebase: ['firebase']
+    mapbox: ['mapbox']
+  mention_max: 4               # technologies from their stack the message should lean on
+  max_unasked: 2               # technologies a draft may name that the listing didn't ask for
+
+logging:
+  keep_days: 30          # logs/YYYY-MM-DD.log older than this are deleted at the start of each run

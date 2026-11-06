@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss">
+  <channel>
+    <title>We Work Remotely: Full-Stack Programming Jobs</title>
+    <link>https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss</link>
+    <description>We Work Remotely: Full-Stack Programming Jobs</description>
+    <item>
+      <title>Cloudy: Full Stack Engineer</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <category>Full-Stack Programming</category>
+      <type>Full-Time</type>
+      <description>&lt;p&gt;&lt;strong&gt;Headquarters:&lt;/strong&gt; Remote&lt;/p&gt;&lt;p&gt;Vue.js, Django, PostgreSQL on GCP.&lt;/p&gt;</description>
+      <pubDate>Fri, 23 Oct 2026 07:31:03 +0000</pubDate>
+      <guid>https://weworkremotely.com/remote-jobs/cloudy-full-stack-engineer</guid>
+      <link>https://weworkremotely.com/remote-jobs/cloudy-full-stack-engineer</link>
+    </item>
+    <item>
+      <title>Statesider: Backend Developer</title>
+      <region>USA Only</region>
+      <country></country>
+      <category>Full-Stack Programming</category>
+      <type>Full-Time</type>
+      <description>&lt;p&gt;Node.js APIs. Team of 20.&lt;/p&gt;</description>
+      <pubDate>Thu, 22 Oct 2026 07:31:03 +0000</pubDate>
+      <guid>https://weworkremotely.com/remote-jobs/statesider-backend-developer</guid>
+      <link>https://weworkremotely.com/remote-jobs/statesider-backend-developer</link>
+    </item>
+    <item>
+      <title>Mapster: Senior .NET Engineer</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <category>Full-Stack Programming</category>
+      <type>Full-Time</type>
+      <description>&lt;p&gt;C# and .NET with Mapbox. Must be authorized to work in the US.&lt;/p&gt;</description>
+      <pubDate>Thu, 22 Oct 2026 06:00:00 +0000</pubDate>
+      <guid>https://weworkremotely.com/remote-jobs/mapster-senior-net-engineer</guid>
+      <link>https://weworkremotely.com/remote-jobs/mapster-senior-net-engineer</link>
+    </item>
+  </channel>
+</rss>

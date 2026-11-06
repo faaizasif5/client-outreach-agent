@@ -1,0 +1,68 @@
+# YC job-board extraction rules: DATA, not code (spec 7a). The automatic repair may only change
+# values in this file, and only after the new values pass every health check on a saved snapshot.
+# Backups: config/yc_selectors.<date>.bak.yaml. Public pages only: never log in.
+version: 2
+allowed_domains: [www.ycombinator.com, ycombinator.com, www.workatastartup.com, workatastartup.com]
+pages:
+  - name: yc_board               # YC's public job board: remote engineering, posting age included
+    enabled: true
+    results_url: https://www.ycombinator.com/jobs/role/software-engineer/remote
+    mode: json
+    json:
+      container: "[data-page]"
+      attribute: data-page
+      listings_path: props.jobPostings
+      fields: {id: id, title: title, url: url, company: companyName, company_url: companyUrl,
+               location: location, created: createdAt, visa: visa, experience: minExperience,
+               salary: salaryRange, role: role}
+    detail:
+      kind: yc_job               # ycombinator.com job page: description + company + founders
+      container: "[data-page]"
+      attribute: data-page
+      job_path: props.job
+      company_path: props.company
+  - name: waas_jobs              # Work at a Startup public jobs (engineering, remote only)
+    enabled: true
+    results_url: https://www.workatastartup.com/jobs?role=eng&remote=only
+    mode: json
+    url_template: https://www.workatastartup.com/jobs/{id}
+    json:
+      container: "[data-page]"
+      attribute: data-page
+      listings_path: props.jobs
+      fields: {id: id, title: title, company: companyName, company_slug: companySlug,
+               location: location, salary: salary, role: roleType}
+    detail:
+      kind: waas                 # dates + founders from the public YC company page, text from the WaaS job page
+      company_url_template: https://www.ycombinator.com/companies/{company_slug}
+      container: "[data-page]"
+      attribute: data-page
+      company_path: props.company
+      postings_path: props.jobPostings
+      job_path: props.job
+      description_key: descriptionHtml
+  - name: waas_companies         # Work at a Startup companies directory, newest first: needs YOUR saved
+    enabled: true                # session (python main.py yc-login). Never auto-repaired by Claude:
+    requires_session: true       # logged-in pages carry account data, so they are never sent anywhere.
+    repair: false
+    results_url: https://www.workatastartup.com/companies?demographic=any&hasEquity=any&hasSalary=any&industry=any&interviewProcess=any&layout=list-compact&role=eng&sortBy=created_desc&tab=any&usVisaNotRequired=any
+    mode: xhr                    # listings arrive in background requests while the page scrolls
+    xhr:
+      match: /companies/fetch    # only these responses are kept (company + job data, no profile)
+      max_batches: 6             # ~10 companies per batch
+      companies_path: companies
+      jobs_key: jobs
+      company_fields: {company: name, company_slug: slug, website: website, team_size: team_size,
+                       one_liner: one_liner, founders: founders}
+      job_fields: {id: id, title: title, url: show_path, location: pretty_location_or_remote,
+                   remote: remote, role: pretty_role, visa: pretty_sponsors_visa,
+                   experience: pretty_min_experience, salary: pretty_salary_range,
+                   updated: pretty_updated_at, description: description}
+      include: {role: [Engineering], remote: ["yes", "only"]}
+    detail:
+      kind: inline               # text is in the listing; the posting date comes from the public YC company page
+      company_url_template: https://www.ycombinator.com/companies/{company_slug}
+      container: "[data-page]"
+      attribute: data-page
+      company_path: props.company
+      postings_path: props.jobPostings

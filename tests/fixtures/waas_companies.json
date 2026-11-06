@@ -1,0 +1,279 @@
+{
+ "companies": [
+  {
+   "id": 27673,
+   "website": "https://reflex.dev",
+   "name": "Reflex",
+   "slug": "givecampus",
+   "team_size": 10,
+   "one_liner": "The operating system for building mission-critical enterprise apps.",
+   "founders": [
+    {
+     "full_name": "Alek Petuskey",
+     "linkedin": "https://www.linkedin.com/in/aleksanderpetuskey/"
+    },
+    {
+     "full_name": "Nikhil Rao",
+     "linkedin": "https://www.linkedin.com/in/nrao95/"
+    }
+   ],
+   "jobs": [
+    {
+     "id": "112545",
+     "title": "Forward Deployed Engineer",
+     "description": "About Reflex\n\nReflex helps teams build and deploy web applications in Python. We\u2019re hiring a Forward Deployed Engineer to work directly with customers and turn their business workflows into reliable software.\n\nAbout the role\n\nYou\u2019ll own customer projects from discovery through deployment: understand how people work, translate their needs into clear requirements, build applications with Reflex and AI development tools, and verify that the finished software solves the problem. You\u2019ll work closely with our founders and engineering team and bring customer feedback back into the product.\n\nWhat you\u2019",
+     "show_path": "https://www.workatastartup.com/jobs/117857",
+     "pretty_min_experience": "Any (new grads ok)",
+     "pretty_location_or_remote": "Remote (US)",
+     "pretty_salary_range": "$110K - $155K",
+     "pretty_role": "Engineering",
+     "pretty_updated_at": "10/22/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "yes"
+    },
+    {
+     "id": 103944,
+     "title": "Growth Engineer",
+     "description": "You will own Reflex's go-to-market motion end-to-end, strategy through execution. We have strong product-market signals (1M+ apps built, 28k+ GitHub stars, Fortune 500 adoption) but no formalized GTM engine. We need someone who has built this before, taken an early-stage startup from unstructured inbound and founder-led sales to a repeatable, scalable pipeline, and can bring that playbook to Reflex.\n\nYou will:\n\n* Engineer Systems to Assist with GTM and Growth\n* Define and execute Reflex's GTM strategy: segmentation, positioning, channel mix, and pipeline architecture from the ground up\n* Build",
+     "show_path": "https://www.workatastartup.com/jobs/103944",
+     "pretty_min_experience": "Any (new grads ok)",
+     "pretty_location_or_remote": "San Francisco, CA, US",
+     "pretty_salary_range": "$130K - $200K",
+     "pretty_role": "Marketing",
+     "pretty_updated_at": "10/01/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "no"
+    },
+    {
+     "id": 108783,
+     "title": "Founding Sales Development Representative (SDR)",
+     "description": "## About Reflex\n\nReflex helps companies build, deploy, and manage custom applications with AI. Teams securely connect their company data, build on our open-source Python framework, and deploy applications to their users.\n\nOur customers use Reflex to modernize legacy software, build operational tools, and turn company data into applications their teams use every day.\n\nWe\u2019re hiring a Founding SDR to help turn that demand into qualified enterprise conversations. You\u2019ll work directly with our CEO and founding Account Executive, with meaningful ownership and room to grow as we build the sales team.",
+     "show_path": "https://www.workatastartup.com/jobs/108783",
+     "pretty_min_experience": "1+ years",
+     "pretty_location_or_remote": "San Francisco, CA, US",
+     "pretty_salary_range": "$175 - $210K",
+     "pretty_role": "Sales",
+     "pretty_updated_at": "10/21/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "no"
+    },
+    {
+     "id": 118492,
+     "title": "Growth Lead",
+     "description": "## About Reflex\n\nReflex is the operating system for building mission-critical enterprise applications.\n\nToday's enterprise stack is fragmented. Shipping an app requires stitching together multiple tools and coordinating across multiple roles. Reflex replaces that complexity with a single, unified platform to build, deploy, and manage production applications end-to-end.\n\nWe empower teams to own the entire lifecycle of their apps, from idea to production, without needing specialized infrastructure, DevOps, or platform teams. We do this by providing solid, reusable abstractions at both the framew",
+     "show_path": "https://www.workatastartup.com/jobs/118492",
+     "pretty_min_experience": "3+ years",
+     "pretty_location_or_remote": "San Francisco, CA, US",
+     "pretty_salary_range": "$150K - $200K",
+     "pretty_role": "Sales",
+     "pretty_updated_at": "10/23/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "no"
+    }
+   ]
+  },
+  {
+   "id": 30299,
+   "website": "https://miyagilabs.ai",
+   "name": "Miyagi Labs",
+   "slug": "miyagi-labs",
+   "team_size": 2,
+   "one_liner": "AI tutors for exam prep",
+   "founders": [
+    {
+     "full_name": "Guang Cui",
+     "linkedin": "https://www.linkedin.com/in/guang-cui-40140a89/"
+    },
+    {
+     "full_name": "Tyrone Davis III",
+     "linkedin": "https://www.linkedin.com/in/tyroned3/"
+    }
+   ],
+   "jobs": [
+    {
+     "id": 117399,
+     "title": "Content Creator & Growth Contract - Ethiopia",
+     "description": "We are looking for someone to manage our UGC program and build it out. You should like social media, growing a product and know how to use AI tools. You must have went through the Ethiopian education system.\\\n\\\nYou will be reaching out to content creators and helping us grow in Ethiopia. Experience in CapCut and Canva or comparable creative platforms is a plus.\\\n\\\nCompensation will be a monthly stipend.",
+     "show_path": "https://www.workatastartup.com/jobs/117399",
+     "pretty_min_experience": "Any (new grads ok)",
+     "pretty_location_or_remote": "ET / Remote (ET)",
+     "pretty_salary_range": "$100 - $250 / monthly",
+     "pretty_role": "Marketing",
+     "pretty_updated_at": "10/18/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "only"
+    },
+    {
+     "id": 117398,
+     "title": "Content Creator & Growth Contract - South Africa",
+     "description": "We are looking for someone to manage our UGC program and build it out. You should like social media, growing a product and know how to use AI tools. You must have went through the South African education system.\\\n\\\nYou will be reaching out to content creators and helping us grow in South Africa. Experience in CapCut and Canva or comparable creative platforms is a plus.\\\n\\\nCompensation will be a monthly stipend.",
+     "show_path": "https://www.workatastartup.com/jobs/117398",
+     "pretty_min_experience": "Any (new grads ok)",
+     "pretty_location_or_remote": "ZA / Remote (ZA)",
+     "pretty_salary_range": "$350 - $500 / monthly",
+     "pretty_role": "Marketing",
+     "pretty_updated_at": "10/19/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "only"
+    },
+    {
+     "id": 118493,
+     "title": "International Growth Associate",
+     "description": "Hi! At Miyagi Labs (YC W25), we\u2019re building an AI-powered learning platform that helps students around the world learn and prepare for important exams. We're growing internationally and looking for ambitious, creative people to help bring Miyagi to millions of students.\n\n**About the Role**\n\nWe're hiring International Growth Associates to help expand Miyagi Labs into new markets, particularly across Africa and Asia.\n\nYou'll work directly with the founders to experiment with marketing strategies, launch advertising campaigns, build relationships with content creators, and drive student acquisiti",
+     "show_path": "https://www.workatastartup.com/jobs/118493",
+     "pretty_min_experience": "1+ years",
+     "pretty_location_or_remote": "Remote (US)",
+     "pretty_salary_range": "$300 - $10K / monthly",
+     "pretty_role": "Marketing",
+     "pretty_updated_at": "10/23/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "only"
+    },
+    {
+     "id": 117420,
+     "title": "Content Creator & Growth Contract - Pakistan",
+     "description": "We are looking for someone to manage our UGC program and build it out. You should like social media, growing a product and know how to use AI tools. You must have went through the Pakistan education system.\\\n\\\nYou will be reaching out to content creators and helping us grow in Pakistan. Experience in CapCut and Canva or comparable creative platforms is a plus.\\\n\\\nCompensation will be a monthly stipend.",
+     "show_path": "https://www.workatastartup.com/jobs/117420",
+     "pretty_min_experience": "Any (new grads ok)",
+     "pretty_location_or_remote": "PK / Remote (PK)",
+     "pretty_salary_range": "$100 - $300 / monthly",
+     "pretty_role": "Marketing",
+     "pretty_updated_at": "10/19/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "only"
+    }
+   ]
+  },
+  {
+   "id": 30738,
+   "website": "https://altur.io",
+   "name": "Altur",
+   "slug": "altur",
+   "team_size": 9,
+   "one_liner": "Voice AI Agents for Debt Collection",
+   "founders": [
+    {
+     "full_name": "Pedro Fern\u00e1ndez",
+     "linkedin": "https://www.linkedin.com/in/pedrofdzl"
+    },
+    {
+     "full_name": "Luis Olave",
+     "linkedin": "https://linkedin.com/in/luis-olave"
+    }
+   ],
+   "jobs": [
+    {
+     "id": 118496,
+     "title": "Sales Development Representative (Spanish & Portuguese)",
+     "description": "### About Altur\n\nWe are building a call center run entirely by AI agents. We handle hundreds of thousands of voice and WhatsApp conversations every day for some of the largest banks, fintechs and call centers in Latin America.\n\nWe are a YC-backed team of 9, and we build everything in-house, from telephony to the agents themselves. Our bet is that with the right technology, a small team can deliver a better service than companies 100 times our size.\n\n### About the role\n\nWe are hiring our first SDR. You will build Altur's sales team from zero.\n\nUntil now, all of GTM has run through the CEO. Dema",
+     "show_path": "https://www.workatastartup.com/jobs/118496",
+     "pretty_min_experience": "Any (new grads ok)",
+     "pretty_location_or_remote": "Mexico City, CDMX, MX / Remote",
+     "pretty_salary_range": "$25K - $35K",
+     "pretty_role": "Sales",
+     "pretty_updated_at": "10/24/2026",
+     "pretty_sponsors_visa": "US citizenship/visa not required",
+     "remote": "yes"
+    }
+   ]
+  },
+  {
+   "id": 29759,
+   "website": "https://www.withdavid.ai/",
+   "name": "David AI",
+   "slug": "david-ai",
+   "team_size": 10,
+   "one_liner": "Data for audio AI",
+   "founders": [
+    {
+     "full_name": "Tomer Cohen",
+     "linkedin": "https://www.linkedin.com/in/cohen-tomer/"
+    },
+    {
+     "full_name": "Ben Wiley",
+     "linkedin": "https://www.linkedin.com/in/benwileymn"
+    }
+   ],
+   "jobs": [
+    {
+     "id": 74703,
+     "title": "Applied Audio ML Engineer",
+     "description": "### **About our Machine Learning team**\r\n\r\nOur Machine Learning team sits at the intersection of cutting-edge research and production systems, transforming raw audio into high-signal data for leading AI labs and enterprises. We own the full ML lifecycle - from researching novel speech processing algorithms to deploying models processing terabytes of audio daily.\r\n\r\n### **About this role**\r\n\r\nAs an **Applied ML Engineer** at David AI you'll build cutting-edge speech and audio models, production inference systems and resilient pipelines that showcase what high-quality data can really do.\r\n\r\n### ",
+     "show_path": "https://www.workatastartup.com/jobs/74703",
+     "pretty_min_experience": "3+ years",
+     "pretty_location_or_remote": "Remote",
+     "pretty_salary_range": "$150K - $260K",
+     "pretty_role": "Engineering",
+     "pretty_updated_at": "09/01/2026",
+     "pretty_sponsors_visa": "Will sponsor",
+     "remote": "only"
+    },
+    {
+     "id": 112053,
+     "title": "Talent Acquisition & People Operations",
+     "description": " **About David AI**\n\nDavid AI is the first audio data research company. We bring an R&D approach to data\u2013developing datasets with the same rigor AI labs bring to models. Our mission is to bring AI into the real world, and we believe audio is the gateway. Speech is versatile, accessible, and human\u2014it fits naturally into everyday life. As audio AI advances and new use cases emerge, high-quality training data is the bottleneck. This is where David AI comes in.\n\nDavid AI was founded in 2024 by a team of former Scale AI engineers and operators. In less than a year, we've brought on most FAANG compa",
+     "show_path": "https://www.workatastartup.com/jobs/112053",
+     "pretty_min_experience": "Any (new grads ok)",
+     "pretty_location_or_remote": "San Francisco",
+     "pretty_salary_range": "$75K - $240K",
+     "pretty_role": "Operations",
+     "pretty_updated_at": "10/24/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "no"
+    },
+    {
+     "id": 79943,
+     "title": "Growth Operations Lead",
+     "description": "### **About our Growth team**\r\n\r\nOur Growth team powers David AI's contributor network, the foundation of our Data Factory. We scale our global community of contributors across diverse domains - including voice actors, linguists, transcribers, and specialized domain experts - to meet customer data needs. We run rapid experiments across channels like job ads, marketing, communities, agencies, universities, multilingual forums, referral programs, and gig platforms. We systematize what works, turning successful experiments into scalable playbooks that drive sustainable contributor growth.\r\n\r\n### ",
+     "show_path": "https://www.workatastartup.com/jobs/79943",
+     "pretty_min_experience": "3+ years",
+     "pretty_location_or_remote": "San Francisco, CA, US",
+     "pretty_salary_range": "$120K - $180K",
+     "pretty_role": "Operations",
+     "pretty_updated_at": "03/14/2026",
+     "pretty_sponsors_visa": "Will sponsor",
+     "remote": "no"
+    },
+    {
+     "id": 114029,
+     "title": "General Manager, Marketplace",
+     "description": "## **About David AI**\n\nDavid AI is the first audio data research company. We bring an R&D approach to data\u2013developing datasets with the same rigor AI labs bring to models. Our mission is to bring AI into the real world, and we believe audio is the gateway. Speech is versatile, accessible, and human\u2014it fits naturally into everyday life. As audio AI advances and new use cases emerge, high-quality training data is the bottleneck. This is where David AI comes in.\n\nDavid AI was founded in 2024 by a team of former Scale AI engineers and operators. In less than a year, we\u2019ve brought on most FAANG com",
+     "show_path": "https://www.workatastartup.com/jobs/114029",
+     "pretty_min_experience": "5+ years",
+     "pretty_location_or_remote": "San Francisco / New York City",
+     "pretty_salary_range": "$205K - $235K",
+     "pretty_role": "Operations",
+     "pretty_updated_at": "10/24/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "no"
+    },
+    {
+     "id": 107893,
+     "title": "Recruiting Coordinator",
+     "description": " **About David AI**\n\nDavid AI is the first audio data research company. We bring an R&D approach to data\u2013developing datasets with the same rigor AI labs bring to models. Our mission is to bring AI into the real world, and we believe audio is the gateway. Speech is versatile, accessible, and human\u2014it fits naturally into everyday life. As audio AI advances and new use cases emerge, high-quality training data is the bottleneck. This is where David AI comes in.\n\nDavid AI was founded in 2024 by a team of former Scale AI engineers and operators. In less than a year, we've brought on most FAANG compa",
+     "show_path": "https://www.workatastartup.com/jobs/107893",
+     "pretty_min_experience": "Any (new grads ok)",
+     "pretty_location_or_remote": "San Francisco",
+     "pretty_salary_range": "$75K - $100K",
+     "pretty_role": "Recruiting & HR",
+     "pretty_updated_at": "10/24/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "no"
+    },
+    {
+     "id": 102384,
+     "title": "Research Scientist",
+     "description": "## **About David AI**\n\nDavid AI is the first audio data research company. We bring an R&D approach to data\u2013developing datasets with the same rigor AI labs bring to models. Our mission is to bring AI into the real world, and we believe audio is the gateway. Speech is versatile, accessible, and human\u2014it fits naturally into everyday life. As audio AI advances and new use cases emerge, high-quality training data is the bottleneck. This is where David AI comes in.\n\nDavid AI was founded in 2024 by a team of former Scale AI engineers and operators. In less than a year, we\u2019ve brought on most FAANG com",
+     "show_path": "https://www.workatastartup.com/jobs/102384",
+     "pretty_min_experience": "5+ years",
+     "pretty_location_or_remote": "San Francisco",
+     "pretty_salary_range": "$210K - $360K",
+     "pretty_role": "Operations",
+     "pretty_updated_at": "10/24/2026",
+     "pretty_sponsors_visa": "US citizen/visa only",
+     "remote": "no"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,13 @@
+# Phase 1 dependencies only (spec section 4). Phase 2+ libraries are added when those phases start.
+requests>=2.31
+feedparser>=6.0
+beautifulsoup4>=4.12
+pydantic>=2.7
+pyyaml>=6.0
+python-dotenv>=1.0
+pytest>=8.0
+# Phase 2 (Gmail + Sheets + Drive)
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+# Phase 3 (YC scraper). After install: python -m playwright install chromium
+playwright>=1.40

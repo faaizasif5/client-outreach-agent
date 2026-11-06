@@ -218,3 +218,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- client outreach agent: private data (repo must stay PRIVATE) ---
+.env
+credentials.json
+token*.json
+*token*.json
+*.token
+data/
+candidate/profile.yaml
+candidate/resumes/
+candidate/latex/
+candidate/bullets.yaml
+snapshots/
+applications/
+logs/
+reports/
+sandbox_empty_dir/
+.pytest_cache/
+
+# local tool binaries
+tools/
