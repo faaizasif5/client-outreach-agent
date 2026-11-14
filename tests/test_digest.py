@@ -24,7 +24,7 @@ def test_nothing_new_is_one_line():
     text = digest.render_digest(ctx())
     assert "Nothing new to send today." in text
     for noise in ("Since last run", "Needs attention", "Worth a manual look", "label", "Claude"):
-        assert noise not in text.split("Full report")[0]
+        assert noise not in text
 
 
 def test_actions_grouped_with_headline_and_short_reason():
@@ -51,13 +51,15 @@ def test_since_last_run_only_nonzero():
                     "1 pending kit(s) expired")
 
 
-def test_attention_and_uncertain_capped_at_five():
-    unc = [{"company": f"C{n}", "title": "Engineer", "reason": "region_unknown", "sources": "[]"} for n in range(8)]
-    text = digest.render_digest(ctx(errors=["source hn: Timeout"],
-                                    notes=["YC page waas_companies: your session expired. Run: python main.py yc-login"],
-                                    uncertain=unc))
-    assert "## Needs attention" in text and "session expired" in text and "source hn: Timeout" in text
-    assert text.count("says remote, no region given") == 5 and "…and 3 more in the full report" in text
+def test_attention_and_every_uncertain_job_listed():
+    unc = [{"company": f"C{n}", "title": "Engineer", "reason": "region_unknown", "sources": "[]",
+            "location_text": "Remote"} for n in range(8)]
+    for render in (digest.render_digest, digest.render_digest_html):
+        text = render(ctx(errors=["source hn: Timeout"],
+                          notes=["YC page waas_companies: your session expired. Run: python main.py yc-login"],
+                          uncertain=unc))
+        assert "Needs attention" in text and "session expired" in text and "source hn: Timeout" in text
+        assert text.count("says remote, no region given") == 8 and "more in the full report" not in text
 
 
 def test_weekly_compact_on_mondays():
@@ -73,7 +75,7 @@ def test_weekly_section_left_out_when_nothing_happened():
               "0 drafts expired unreviewed.", "Discard rate: n/a", "", "_No outreach yet._", ""]
     for render in (digest.render_digest, digest.render_digest_html):
         out = render(ctx(weekly=weekly))
-        assert "This week" not in out and "No outreach yet" not in out and "_" not in out.split("Full report")[0][-5:]
+        assert "This week" not in out and "No outreach yet" not in out
 
 
 # ---------------------------------------------------------------- HTML email + delivery
@@ -111,3 +113,48 @@ def test_send_only_to_yourself():
     client = GmailClient(Svc(), "me@x.io")
     with pytest.raises(ValueError):
         client.send(build_mime(sender="me@x.io", to="founder@acme.com", subject="s", body="b", job_key="k"))
+
+
+# ---------------------------------------------------------------- full report in the email
+
+def scored(company, decision, fit=70, band="possible", **kw):
+    return item(company, "portal", fit, band, job_key=f"src:hn:{company}", decision=decision, confidence="medium",
+                evidence=["Listing: Django APIs", "Profile: django, postgresql"], posted_at="2026-10-24T00:00:00+00:00",
+                flags="[]", **kw)
+
+
+def full_ctx():
+    return ctx(items=[scored("Acme", "shortlisted", 84, "strong"), scored("Globex", "below_threshold", 58, "skip"),
+                      scored("Hooli", "suppressed_company", suppressed_by="email")],
+               uncertain=[{"company": "Odin", "title": "Infra", "reason": "region_unknown", "location_text": "Remote",
+                           "sources": "[]"}],
+               ineligible_counts={"stale": 240, "onsite": 50},
+               usage={"scoring": {"model": "sonnet", "effort": "medium", "attempts": 1,
+                                  "calls": [{"usage": {"input_tokens": 10, "output_tokens": 5}, "duration_ms": 900}]}},
+               outreach={"created": [], "sync": {}, "rejected": {"src:hn:Acme": ["LinkedIn pitch too long (80 words, max 75)"]}})
+
+
+def test_email_carries_the_full_report():
+    for render in (digest.render_digest, digest.render_digest_html):
+        out = render(full_ctx())
+        assert "Shortlist" in out and "Acme" in out and "strong 84" in out
+        assert "Listing: Django APIs" in out and "posted 2026-10-24" in out
+        assert "Other scored jobs" in out and "Globex" in out and "below threshold" in out
+        assert "LinkedIn pitch too long (80 words, max 75)" in out      # rejected draft, with why
+        assert "Hooli" in out and "blocked" in out                      # second role at a blocked company
+        assert "stale 240" in out and "onsite 50" in out
+        assert "sonnet" in out
+        assert "reports/" not in out                                    # no pointer to the .md any more
+
+
+def test_report_header_says_live_or_dry_run():
+    base = {"run_id": "r", "counts": {}, "items": [], "uncertain": [], "ineligible_counts": __import__("collections").Counter()}
+    assert "(dry run)" in digest.render({**base, "date": "d", "live": False})
+    assert "(dry run)" not in digest.render({**base, "date": "d", "live": True})
+
+
+def test_tracker_link_always_in_email_even_on_an_empty_day():
+    url = "https://docs.google.com/spreadsheets/d/x"
+    for render in (digest.render_digest, digest.render_digest_html):
+        assert url in render(ctx(links={"tracker": url}))
+        assert "spreadsheets" not in render(ctx())                     # no sheet id yet: no broken link

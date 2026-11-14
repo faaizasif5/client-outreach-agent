@@ -30,8 +30,9 @@ updated to match, and this list is the quick summary.
 - **Never pay to apply:** job-board apply buttons behind sign-up/pricing/checkout (e.g. We Work Remotely)
   are detected at the liveness check; those jobs go to manual review, never to a kit. WWR jobs use the
   company's own link from the listing when there is one.
-- **Digest:** a short HTML email sent to myself each run (only actions, changes, problems, up to 5 jobs
-  worth a manual look); the full report with labels stays in `reports/<date>.md`.
+- **Digest:** an HTML email sent to myself each run: actions, changes and problems first, then the full
+  report (every uncertain job, the shortlist and other scored jobs with fit, reason and evidence, rejected
+  drafts with why, ineligible counts, Claude usage). `reports/<date>.md` is still written, only for labeling.
 - **Sheets:** friendly status labels, styled clickable links, a styled layout re-applied every run,
   LinkedIn status `closed`, and an `Archive` tab that finished rows move to automatically.
 - **Public repo:** the repo is public, so this spec, the prompts, config and tests use fake profile data
@@ -714,8 +715,9 @@ def run_claude(prompt: str, model: str, schema: type[BaseModel],
 - Reply from another address in the thread -> status `replied`.
 
 **Daily digest**
-- Emailed to myself each run as a short HTML email with a plain-text fallback (`digest.delivery: send`; `draft` keeps a draft instead), plus `reports/YYYY-MM-DD-digest.md`. The full report with all scored jobs and labels stays in `reports/YYYY-MM-DD.md`.
-- Contains only: today's emails / portal applications / LinkedIn requests (company, role, fit, one-line reason, their stack vs mine, buttons), changes since the last run, problems that need me, up to 5 engineering jobs worth a manual look, and weekly stats on Mondays.
+- Emailed to myself each run as a short HTML email with a plain-text fallback (`digest.delivery: send`; `draft` keeps a draft instead), plus `reports/YYYY-MM-DD-digest.md`. `reports/YYYY-MM-DD.md` is still written for labeling (`main.py label`); the email no longer points to it.
+- Always has an "Open tracker sheet" link at the top (plain text: `Tracker sheet: <url>`), even on a day with nothing to send.
+- Contains: today's emails / portal applications / LinkedIn requests (company, role, fit, one-line reason, their stack vs mine, buttons), changes since the last run, problems that need me (each rejected draft with the company and the failed check), every job worth a manual look (with its location text), the full report (shortlist cards and the other scored jobs with band, fit, decision, reason, evidence and posted date; second roles at a blocked company), weekly stats on Mondays, and run details (ineligible counts by reason, Claude usage).
 
 **Phone notification (ntfy)**
 - After the run finishes, `notify.py` sends one push via ntfy so I know drafts are ready.

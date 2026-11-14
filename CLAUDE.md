@@ -33,7 +33,8 @@ Decisions that changed the original spec (details in SPEC section 0):
 - YC: three pages (`config/yc_selectors.yaml`), one read with the user's own saved session
   (`main.py yc-login`); never store or type a password; never send logged-in pages to Claude.
 - Never pay to apply: gated job-board apply links go to manual review.
-- Digest: short HTML email to the user's own address only (`GmailClient.send` refuses anyone else).
+- Digest: HTML email to the user's own address only (`GmailClient.send` refuses anyone else). It
+  carries the full report; `reports/<date>.md` is kept only for labeling.
 - Sheets: friendly labels, styled layout re-applied each run, auto-archive to an `Archive` tab.
 
 ## Hard rules (spec section 2)
