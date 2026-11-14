@@ -42,7 +42,10 @@ updated to match, and this list is the quick summary.
   (all checked in code). The price-mention A/B test is retired.
 - **Logging and alerts:** one log line per run start, step, error and end in `logs/<date>.log`, pruned
   after 30 days. Crashes are recorded on the `runs` row; an expired Google or Claude login gets a phone
-  push right away, any other crash on the last attempt of the day.
+  push right away, any other crash on the last attempt of the day. An expired Google sign-in no longer
+  just stops the run: the run opens a browser to sign in again (as setup-google does), pushes a note
+  saying so, waits up to `google.reauth_timeout_seconds` (900) and carries on; only if that fails is the
+  run recorded failed.
 - **No AI co-author lines:** commits carry no `Co-Authored-By: Claude` trailer.
 
 ## 1. Goal
@@ -894,8 +897,10 @@ Code enforces allowed transitions with a simple dict of `{from_status: {allowed_
 - [x] Install the ntfy app on my phone, subscribe to a random topic, put it in `.env`
 - [x] Fill `config.yaml` (caps, thresholds, max_age_days, eligibility patterns, `offer_paid_trial`, role-title keywords, `stretch_min_fit`, `stretch_max_team_size`, `pitch_explicit_us_only`)
 - [x] `python main.py setup-google` (OAuth, creates the tracker sheet, uploads resumes to Drive). While the
-  OAuth app is in "Testing", Google expires the sign-in after 7 days; a run then stops, is recorded as
-  failed, and pushes "Google sign-in expired" once. Rerun setup-google, or publish the app to stop the expiry.
+  OAuth app is in "Testing", Google expires the sign-in after 7 days; a run then opens a browser to sign
+  in again, pushes "Google sign-in expired. A browser window opened", and continues once you sign in. If
+  nobody signs in within `google.reauth_timeout_seconds`, the run is recorded failed and pushes once to
+  run setup-google. Publish the app to stop the expiry.
   Any crash in a run is logged with its traceback and counts toward the 3 attempts a day.
 - [x] Resume `.tex` files in `candidate/latex/`; Tectonic in `tools/tectonic/`
 - [x] `python main.py yc-login` (log in to Work at a Startup once; rerun when the session expires)

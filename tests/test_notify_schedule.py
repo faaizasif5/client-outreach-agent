@@ -186,8 +186,51 @@ def test_setup_google_signs_in_again_when_refresh_fails(tmp_path, monkeypatch):
     fresh = Credentials(token="new", refresh_token="r2", client_id="c", client_secret="s")
 
     class Flow:
-        def run_local_server(self, port):
+        def run_local_server(self, port, timeout_seconds=None):
             return fresh
     monkeypatch.setattr(flow.InstalledAppFlow, "from_client_secrets_file", lambda *a, **k: Flow())
     assert gmail_client.load_credentials(tmp_path / "credentials.json", token, interactive=True) is fresh
     assert '"new"' in token.read_text()
+
+
+def test_expired_google_login_signs_in_again_and_run_continues(conn, cfg):
+    import main
+    from outputs.gmail_client import NeedsSetup
+    calls, sent = [], []
+
+    def context(conn, profile, interactive=False, timeout=None):
+        calls.append((interactive, timeout))
+        if not interactive:
+            raise NeedsSetup("expired")
+        return {"gmail": "ok"}
+    ctx = main.connect_google(conn, cfg, {}, context=context, alert=lambda m, **k: sent.append(m))
+    assert ctx == {"gmail": "ok"}
+    assert calls == [(False, None), (True, cfg["google"]["reauth_timeout_seconds"])]
+    assert len(sent) == 1 and "browser" in sent[0]
+
+
+def test_failed_sign_in_again_still_crashes_as_needs_setup(conn, cfg):
+    import main
+    from outputs.gmail_client import NeedsSetup
+
+    def context(conn, profile, interactive=False, timeout=None):
+        raise NeedsSetup("expired")
+    with pytest.raises(NeedsSetup):
+        main.connect_google(conn, cfg, {}, context=context, alert=lambda m, **k: None)
+
+
+def test_sign_in_timeout_becomes_needs_setup(tmp_path, monkeypatch):
+    from google_auth_oauthlib import flow
+    from outputs import gmail_client
+    (tmp_path / "credentials.json").write_text("{}")
+    seen = {}
+
+    class Flow:
+        def run_local_server(self, port, timeout_seconds=None):
+            seen["timeout"] = timeout_seconds
+            raise flow.WSGITimeoutError("Timed out waiting for response from authorization server")
+    monkeypatch.setattr(flow.InstalledAppFlow, "from_client_secrets_file", lambda *a, **k: Flow())
+    with pytest.raises(gmail_client.NeedsSetup, match="setup-google"):
+        gmail_client.load_credentials(tmp_path / "credentials.json", tmp_path / "token.json",
+                                      interactive=True, timeout=5)
+    assert seen["timeout"] == 5
