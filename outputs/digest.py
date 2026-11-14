@@ -131,7 +131,7 @@ def render(ctx: dict) -> str:
     items = ctx["items"]
     top = [i for i in items if i["decision"] in ("shortlisted", "queued")]
     rest = [i for i in items if i["decision"] not in ("shortlisted", "queued")]
-    out = [f"# Job report {ctx['date']} (dry run)", "",
+    out = [f"# Job report {ctx['date']}{'' if ctx.get('live') else ' (dry run)'}", "",
            f"Run `{ctx['run_id']}`. Sources: HN Who is Hiring, RemoteOK (remoteok.com), We Work Remotely.", ""]
     c = ctx["counts"]
     out += ["## Summary", "",
@@ -260,8 +260,48 @@ def weekly_lines(ctx: dict) -> list[str]:
     return [] if all(NOTHING_YET.match(l) for l in lines) else lines
 
 
+DECISION_TEXT = {
+    "shortlisted": "shortlisted", "queued": "queued (over today's cap)", "below_threshold": "below threshold",
+    "low_confidence": "low confidence", "skipped_by_ai": "skipped by AI", "not_eligible": "not eligible",
+    "suppressed_company": "company already contacted",
+}
+
+
+def _split_items(ctx: dict) -> tuple[list, list, list]:
+    """Today's scored jobs: shortlist, everything else, second roles at an already-contacted company."""
+    items = ctx.get("items") or []
+    top = [i for i in items if i.get("decision") in ("shortlisted", "queued")]
+    blocked = [i for i in items if i.get("decision") == "suppressed_company"]
+    rest = [i for i in items if i not in top and i not in blocked]
+    return top, rest, blocked
+
+
+def _job_notes(i: dict) -> str:
+    flags = json.loads(i.get("flags") or "[]")
+    notes = [f"posted {i['posted_at'][:10]}"] if i.get("posted_at") else []
+    if "date_estimated" in flags or i.get("posted_at_source") == "newest_first":
+        notes.append("date estimated")
+    return ", ".join(notes + [f for f in flags if f != "date_estimated"])
+
+
+def _rejected_lines(ctx: dict) -> list[str]:
+    """Each draft the truthfulness checks rejected, with the company and why."""
+    names = {i["job_key"]: f"{i['company']}, {i['title']}" for i in ctx.get("items") or [] if i.get("job_key")}
+    return [f"Draft rejected for {names.get(key, key)}: {'; '.join(problems)}"
+            for key, problems in ((ctx.get("outreach") or {}).get("rejected") or {}).items()]
+
+
+def _run_lines(ctx: dict) -> list[str]:
+    lines = []
+    if ctx.get("ineligible_counts"):
+        lines.append("Ineligible today: " + ", ".join(
+            f"{r} {n}" for r, n in Counter(ctx["ineligible_counts"]).most_common()))
+    return lines + [l[2:] for l in usage_lines(ctx.get("usage"))]
+
+
 def render_digest(ctx: dict) -> str:
-    """Only what needs the user today. The full report stays in reports/<date>.md."""
+    """What needs the user today, then the full report: every scored job, every uncertain job, run
+    details. reports/<date>.md is still written, only for labeling (`main.py label`)."""
     stage = ctx.get("outreach") or {}
     created = [c for c in stage.get("created", []) if c.get("status") not in ("suppressed", "exists", "draft_failed")]
     by_route = {r: [c for c in created if c["item"]["route"] == r] for r in ("email", "portal", "network")}
@@ -273,6 +313,9 @@ def render_digest(ctx: dict) -> str:
     out = [f"# Job digest {ctx['date']}", "",
            ("Today: " + ", ".join(p for p, n in zip(parts, by_route.values()) if n) + where + ".") if total
            else "Nothing new to send today.", ""]
+    tracker = (ctx.get("links") or {}).get("tracker")
+    if tracker:
+        out += [f"Tracker sheet: {tracker}", ""]
 
     titles = {"email": "Emails to send", "portal": "Portal applications", "network": "LinkedIn requests"}
     for route, items in by_route.items():
@@ -293,26 +336,45 @@ def render_digest(ctx: dict) -> str:
     failed = [c for c in stage.get("created", []) if c.get("status") == "draft_failed"]
     if failed:
         attention.append(f"{len(failed)} Gmail draft(s) failed; they retry next run.")
-    if stage.get("rejected"):
-        attention.append(f"{len(stage['rejected'])} draft(s) rejected by the truthfulness checks (details in the full report).")
+    attention = [_short(a, 220) for a in attention] + _rejected_lines(ctx)
     if attention:
-        out += ["## Needs attention", ""] + [f"- {_short(a, 220)}" for a in attention] + [""]
+        out += ["## Needs attention", ""] + [f"- {a}" for a in attention] + [""]
 
     uncertain = ctx.get("uncertain") or []
     if uncertain:
         out += ["## Worth a manual look", ""]
-        for u in uncertain[:5]:
+        for u in uncertain:
             url = _job_url(u)
-            out.append(f"- {_cell(u['company'])}, {_cell(u['title'])}: {REASON_TEXT.get(u['reason'], u['reason'])}"
+            loc = f" ({_short(u['location_text'], 80)})" if u.get("location_text") else ""
+            out.append(f"- {_cell(u['company'])}, {_cell(u['title'])}: {REASON_TEXT.get(u['reason'], u['reason'])}{loc}"
                        + (f" [listing]({url})" if url else ""))
-        if len(uncertain) > 5:
-            out.append(f"- …and {len(uncertain) - 5} more in the full report")
+        out.append("")
+
+    top, rest, blocked = _split_items(ctx)
+    for title, group in (("Shortlist", top), ("Other scored jobs", rest)):
+        if group:
+            out += [f"## {title}", ""]
+            for i in group:
+                url = _job_url(i)
+                out.append(f"- **{_cell(i['company'])}**, {_cell(i['title'])} ({i['band']} {i['fit_score']}, "
+                           f"{DECISION_TEXT.get(i['decision'], i['decision'])}, {i['route']})"
+                           + (f" [listing]({url})" if url else ""))
+                for extra in (_short(i.get("reason"), 220), _short("; ".join(i.get("evidence") or []), 300),
+                              _job_notes(i)):
+                    if extra:
+                        out.append(f"  {extra}")
+            out.append("")
+    if blocked:
+        out += ["## Second role at a blocked company", ""]
+        out += [f"- {_cell(i['company'])}, {_cell(i['title'])} (blocked by {i.get('suppressed_by')})" for i in blocked]
         out.append("")
 
     weekly = weekly_lines(ctx)
     if weekly:
         out += ["## This week", ""] + [f"- {l}" for l in weekly] + [""]
-    out.append(f"Full report (labels, all scored jobs): reports/{ctx['date']}.md")
+    run = _run_lines(ctx)
+    if run:
+        out += ["## Run details", ""] + [f"- {l}" for l in run] + [""]
     return "\n".join(out) + "\n"
 
 
@@ -377,6 +439,40 @@ def _bullets(lines: list[str]) -> str:
     return f'<tr><td><ul style="margin:0;padding-left:18px;font-size:14px;color:#3c4043">{items}</ul></td></tr>'
 
 
+def _a(text, url) -> str:
+    if not url:
+        return _e(text)
+    return f'<a href="{_e(url)}" style="color:#1a73e8;text-decoration:none">{_e(text)}</a>'
+
+
+def _badge(i: dict) -> str:
+    bg, fg = BAND_STYLE.get(i["band"], BAND_STYLE["skip"])
+    return (f'<span style="background:{bg};color:{fg};border-radius:10px;padding:2px 8px;font-size:12px;'
+            f'font-weight:600">{_e(i["band"])} {_e(i["fit_score"])}</span>')
+
+
+def _scored_card(i: dict) -> str:
+    meta = " · ".join(x for x in (DECISION_TEXT.get(i["decision"], i["decision"]),
+                                  ROUTE_LABEL.get(i["route"], i["route"]), _job_notes(i)) if x)
+    evidence = "; ".join(i.get("evidence") or [])
+    return (f'<tr><td style="padding:12px 14px;border:1px solid #e0e0e0;border-radius:8px;background:#ffffff">'
+            f'<div style="font-size:15px;font-weight:600;color:#202124">{_e(i["company"])} {_badge(i)}</div>'
+            f'<div style="font-size:14px;margin-top:2px">{_a(i["title"], _job_url(i))}</div>'
+            f'<div style="font-size:12px;color:#5f6368;margin-top:4px">{_e(meta)}</div>'
+            f'<div style="font-size:13px;color:#3c4043;margin-top:6px">{_e(_short(i.get("reason"), 220))}</div>'
+            + (f'<div style="font-size:12px;color:#5f6368;margin-top:4px">{_e(_short(evidence, 300))}</div>'
+               if evidence else "")
+            + '</td></tr><tr><td style="height:8px"></td></tr>')
+
+
+def _scored_line(i: dict) -> str:
+    evidence = "; ".join(i.get("evidence") or [])
+    return (f'{_a(i["company"] + ", " + i["title"], _job_url(i))} {_badge(i)} '
+            f'<span style="color:#5f6368">· {_e(DECISION_TEXT.get(i["decision"], i["decision"]))}</span>'
+            + (f'<div style="font-size:12px;color:#5f6368;margin:2px 0 6px">{_e(_short(evidence, 240))}</div>'
+               if evidence else ""))
+
+
 def render_digest_html(ctx: dict) -> str:
     stage = ctx.get("outreach") or {}
     links = ctx.get("links") or {}
@@ -391,6 +487,8 @@ def render_digest_html(ctx: dict) -> str:
             f'<tr><td style="font-size:13px;color:#5f6368;padding-bottom:12px">{_e(ctx["date"])}'
             f'{"" if ctx.get("live") else " · dry run"}</td></tr>',
             f'<tr><td><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>{stats}</tr></table></td></tr>']
+    if links.get("tracker"):   # every digest, even on a quiet day
+        rows.append(f'<tr><td style="padding-top:6px">{_button("Open tracker sheet", links["tracker"])}</td></tr>')
     if not created:
         rows.append('<tr><td style="padding:14px 0;font-size:14px;color:#3c4043">Nothing new to send today.</td></tr>')
     titles = {"email": "Emails to send", "portal": "Portal applications", "network": "LinkedIn requests"}
@@ -408,23 +506,31 @@ def render_digest_html(ctx: dict) -> str:
     if since:
         rows.append(_section("Since last run", _bullets(since)))
     attention = [_e(_short(a, 220)) for a in list(ctx.get("errors") or []) + list(ctx.get("notes") or [])]
-    if stage.get("rejected"):
-        attention.append(f"{len(stage['rejected'])} draft(s) rejected by the truthfulness checks")
+    attention += [_e(l) for l in _rejected_lines(ctx)]
     if attention:
         rows.append(_section("Needs attention", _bullets(attention)))
     uncertain = ctx.get("uncertain") or []
     if uncertain:
-        lines = [f'<a href="{_e(_job_url(u))}" style="color:#1a73e8;text-decoration:none">{_e(u["company"])}, '
-                 f'{_e(u["title"])}</a> <span style="color:#5f6368">· {_e(REASON_TEXT.get(u["reason"], u["reason"]))}</span>'
-                 for u in uncertain[:5]]
-        if len(uncertain) > 5:
-            lines.append(f'<span style="color:#5f6368">…and {len(uncertain) - 5} more in the full report</span>')
+        lines = [f'{_a(u["company"] + ", " + u["title"], _job_url(u))} <span style="color:#5f6368">· '
+                 f'{_e(REASON_TEXT.get(u["reason"], u["reason"]))}'
+                 + (f' · {_e(_short(u["location_text"], 80))}' if u.get("location_text") else "") + '</span>'
+                 for u in uncertain]
         rows.append(_section("Worth a manual look", _bullets(lines)))
+    top, rest, blocked = _split_items(ctx)
+    if top:
+        rows.append(_section("Shortlist", "".join(_scored_card(i) for i in top)))
+    if rest:
+        rows.append(_section("Other scored jobs", _bullets([_scored_line(i) for i in rest])))
+    if blocked:
+        rows.append(_section("Second role at a blocked company", _bullets(
+            [f'{_e(i["company"])}, {_e(i["title"])} <span style="color:#5f6368">· blocked by '
+             f'{_e(i.get("suppressed_by"))}</span>' for i in blocked])))
     weekly = weekly_lines(ctx)
     if weekly:
         rows.append(_section("This week", _bullets([_e(l) for l in weekly])))
-    rows.append(f'<tr><td style="padding-top:18px;font-size:12px;color:#80868b">Full report with all scored jobs and '
-                f'labels: reports/{_e(ctx["date"])}.md</td></tr>')
+    run = _run_lines(ctx)
+    if run:
+        rows.append(_section("Run details", _bullets([f'<span style="color:#5f6368">{_e(l)}</span>' for l in run])))
     return (f'<!doctype html><html><body style="margin:0;padding:0;background:#f1f3f4">'
             f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f3f4;{FONT}">'
             f'<tr><td align="center" style="padding:20px 12px">'

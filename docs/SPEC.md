@@ -30,8 +30,9 @@ updated to match, and this list is the quick summary.
 - **Never pay to apply:** job-board apply buttons behind sign-up/pricing/checkout (e.g. We Work Remotely)
   are detected at the liveness check; those jobs go to manual review, never to a kit. WWR jobs use the
   company's own link from the listing when there is one.
-- **Digest:** a short HTML email sent to myself each run (only actions, changes, problems, up to 5 jobs
-  worth a manual look); the full report with labels stays in `reports/<date>.md`.
+- **Digest:** an HTML email sent to myself each run: actions, changes and problems first, then the full
+  report (every uncertain job, the shortlist and other scored jobs with fit, reason and evidence, rejected
+  drafts with why, ineligible counts, Claude usage). `reports/<date>.md` is still written, only for labeling.
 - **Sheets:** friendly status labels, styled clickable links, a styled layout re-applied every run,
   LinkedIn status `closed`, and an `Archive` tab that finished rows move to automatically.
 - **Public repo:** the repo is public, so this spec, the prompts, config and tests use fake profile data
@@ -42,7 +43,10 @@ updated to match, and this list is the quick summary.
   (all checked in code). The price-mention A/B test is retired.
 - **Logging and alerts:** one log line per run start, step, error and end in `logs/<date>.log`, pruned
   after 30 days. Crashes are recorded on the `runs` row; an expired Google or Claude login gets a phone
-  push right away, any other crash on the last attempt of the day.
+  push right away, any other crash on the last attempt of the day. An expired Google sign-in no longer
+  just stops the run: the run opens a browser to sign in again (as setup-google does), pushes a note
+  saying so, waits up to `google.reauth_timeout_seconds` (900) and carries on; only if that fails is the
+  run recorded failed.
 - **No AI co-author lines:** commits carry no `Co-Authored-By: Claude` trailer.
 
 ## 1. Goal
@@ -711,8 +715,9 @@ def run_claude(prompt: str, model: str, schema: type[BaseModel],
 - Reply from another address in the thread -> status `replied`.
 
 **Daily digest**
-- Emailed to myself each run as a short HTML email with a plain-text fallback (`digest.delivery: send`; `draft` keeps a draft instead), plus `reports/YYYY-MM-DD-digest.md`. The full report with all scored jobs and labels stays in `reports/YYYY-MM-DD.md`.
-- Contains only: today's emails / portal applications / LinkedIn requests (company, role, fit, one-line reason, their stack vs mine, buttons), changes since the last run, problems that need me, up to 5 engineering jobs worth a manual look, and weekly stats on Mondays.
+- Emailed to myself each run as a short HTML email with a plain-text fallback (`digest.delivery: send`; `draft` keeps a draft instead), plus `reports/YYYY-MM-DD-digest.md`. `reports/YYYY-MM-DD.md` is still written for labeling (`main.py label`); the email no longer points to it.
+- Always has an "Open tracker sheet" link at the top (plain text: `Tracker sheet: <url>`), even on a day with nothing to send.
+- Contains: today's emails / portal applications / LinkedIn requests (company, role, fit, one-line reason, their stack vs mine, buttons), changes since the last run, problems that need me (each rejected draft with the company and the failed check), every job worth a manual look (with its location text), the full report (shortlist cards and the other scored jobs with band, fit, decision, reason, evidence and posted date; second roles at a blocked company), weekly stats on Mondays, and run details (ineligible counts by reason, Claude usage).
 
 **Phone notification (ntfy)**
 - After the run finishes, `notify.py` sends one push via ntfy so I know drafts are ready.
@@ -894,8 +899,10 @@ Code enforces allowed transitions with a simple dict of `{from_status: {allowed_
 - [x] Install the ntfy app on my phone, subscribe to a random topic, put it in `.env`
 - [x] Fill `config.yaml` (caps, thresholds, max_age_days, eligibility patterns, `offer_paid_trial`, role-title keywords, `stretch_min_fit`, `stretch_max_team_size`, `pitch_explicit_us_only`)
 - [x] `python main.py setup-google` (OAuth, creates the tracker sheet, uploads resumes to Drive). While the
-  OAuth app is in "Testing", Google expires the sign-in after 7 days; a run then stops, is recorded as
-  failed, and pushes "Google sign-in expired" once. Rerun setup-google, or publish the app to stop the expiry.
+  OAuth app is in "Testing", Google expires the sign-in after 7 days; a run then opens a browser to sign
+  in again, pushes "Google sign-in expired. A browser window opened", and continues once you sign in. If
+  nobody signs in within `google.reauth_timeout_seconds`, the run is recorded failed and pushes once to
+  run setup-google. Publish the app to stop the expiry.
   Any crash in a run is logged with its traceback and counts toward the 3 attempts a day.
 - [x] Resume `.tex` files in `candidate/latex/`; Tectonic in `tools/tectonic/`
 - [x] `python main.py yc-login` (log in to Work at a Startup once; rerun when the session expires)

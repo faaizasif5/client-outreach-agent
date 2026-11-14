@@ -38,7 +38,8 @@ The task fires on logon, unlock, wake and hourly; the once-per-day guard decides
 
 | Symptom | Fix |
 |---|---|
-| Push "Google sign-in expired" / log says `NeedsSetup` | `.venv\Scripts\python main.py setup-google` (sign in again in the browser). To stop it lapsing every 7 days, publish the OAuth app: Google Cloud console, OAuth consent screen, "Publish app". |
+| Push "Google sign-in expired. A browser window opened" | Sign in in that browser window within 15 minutes; the run carries on by itself. |
+| Push "Google sign-in wasn't renewed" / log says `NeedsSetup` | `.venv\Scripts\python main.py setup-google` (sign in again in the browser), then `main.py --force`. To stop it lapsing every 7 days, publish the OAuth app: Google Cloud console, OAuth consent screen, "Publish app". |
 | Push "Claude login expired" / log says `OAuth session expired` | Run `claude auth login` in a terminal (or `claude`, then `/login`), then `.venv\Scripts\python main.py` to redo today's run. |
 | Digest says the YC session expired | `.venv\Scripts\python main.py yc-login` |
 | Log says `run crashed` | Read the traceback under it in `logs/<date>.log`. After 3 failed attempts in a day the run stops until tomorrow, and you get a push. |

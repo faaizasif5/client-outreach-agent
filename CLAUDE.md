@@ -27,12 +27,14 @@ Decisions that changed the original spec (details in SPEC section 0):
 - Cold emails: open on a hook copied from the listing, plain facts, honest location line, never
   cost/savings/payroll talk (checked in code). The price A/B test is retired.
 - Logging: `logs/<date>.log` (run start, one line per step, errors, end; pruned after 30 days).
-  Crashes are recorded; expired Google/Claude logins push an alert right away.
+  Crashes are recorded; expired Google/Claude logins push an alert right away. An expired Google
+  sign-in opens a browser to sign in again and the run continues (`google.reauth_timeout_seconds`).
 - Resume attachment name comes from `resume_filename` in the gitignored profile, not `config.yaml`.
 - YC: three pages (`config/yc_selectors.yaml`), one read with the user's own saved session
   (`main.py yc-login`); never store or type a password; never send logged-in pages to Claude.
 - Never pay to apply: gated job-board apply links go to manual review.
-- Digest: short HTML email to the user's own address only (`GmailClient.send` refuses anyone else).
+- Digest: HTML email to the user's own address only (`GmailClient.send` refuses anyone else). It
+  carries the full report; `reports/<date>.md` is kept only for labeling.
 - Sheets: friendly labels, styled layout re-applied each run, auto-archive to an `Archive` tab.
 
 ## Hard rules (spec section 2)

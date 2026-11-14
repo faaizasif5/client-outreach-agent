@@ -333,10 +333,10 @@ def set_env_value(path: Path, key: str, value: str) -> None:
     os.environ[key] = value
 
 
-def google_context(conn, profile: dict, interactive: bool = False) -> dict:
+def google_context(conn, profile: dict, interactive: bool = False, timeout: int | None = None) -> dict:
     """Gmail client + Sheets API + tracker sheet id. Recreates the sheet from SQLite if it is gone."""
     from outputs import gmail_client, sheets_tracker as st
-    creds = gmail_client.load_credentials(ROOT / "credentials.json", ROOT / "token.json", interactive)
+    creds = gmail_client.load_credentials(ROOT / "credentials.json", ROOT / "token.json", interactive, timeout)
     services = gmail_client.build_services(creds)
     address = os.environ.get("GMAIL_ADDRESS") or profile.get("answer_bank", {}).get("email", "")
     api = st.SheetsApi(services["sheets"], services["drive"], gmail_client.execute)
@@ -483,6 +483,29 @@ def main(argv=None) -> int:
             return 1
 
 
+def ntfy_settings(cfg: dict) -> dict:
+    return {"topic": os.environ.get("NTFY_TOPIC"), "server": cfg["notifications"]["ntfy_server"],
+            "enabled": os.environ.get("NTFY_ENABLED", "true").lower() != "false",
+            "timeout": cfg["notifications"]["timeout_seconds"]}
+
+
+def connect_google(conn, cfg: dict, profile: dict, context=None, alert=notify.alert) -> dict:
+    """Opens the Google context; if the sign-in has expired (a "Testing" OAuth app lapses after 7 days),
+    opens a browser to sign in again (what setup-google does) and the run carries on. If you don't
+    finish within google.reauth_timeout_seconds, NeedsSetup propagates and the run is recorded failed."""
+    from outputs.gmail_client import NeedsSetup
+    context = context or google_context
+    try:
+        return context(conn, profile)
+    except NeedsSetup as e:
+        log.warning("Google sign-in expired (%s); opening a browser to sign in again", e)
+        alert("Google sign-in expired. A browser window opened on your laptop: sign in there and "
+              "today's run carries on.", **ntfy_settings(cfg))
+    ctx = context(conn, profile, interactive=True, timeout=cfg["google"]["reauth_timeout_seconds"])
+    log.info("Google sign-in renewed; run continues")
+    return ctx
+
+
 def record_crash(conn, cfg: dict, now: datetime, e: Exception, alert=notify.alert) -> None:
     """Marks the run failed (so the 3-attempts-a-day limit applies) and pushes an alert you can act on:
     right away for an expired Google sign-in, otherwise on the last attempt of the day."""
@@ -495,15 +518,13 @@ def record_crash(conn, cfg: dict, now: datetime, e: Exception, alert=notify.aler
                      (run_id, repo.iso(now), repo.iso(datetime.now(timezone.utc)), error))
     failed = schedule.failed_attempts_today(conn, now)
     if isinstance(e, NeedsSetup):
-        message = "Google sign-in expired, so today's run stopped. Run: python main.py setup-google"
+        message = "Google sign-in wasn't renewed, so today's run stopped. Run: python main.py setup-google"
         due = failed == 1
     else:
         message = f"Job agent crashed {failed} times today ({type(e).__name__}). See logs/."
         due = failed == cfg["schedule"]["max_attempts_per_day"]
     if due:
-        alert(message, topic=os.environ.get("NTFY_TOPIC"),
-              enabled=os.environ.get("NTFY_ENABLED", "true").lower() != "false",
-              server=cfg["notifications"]["ntfy_server"], timeout=cfg["notifications"]["timeout_seconds"])
+        alert(message, **ntfy_settings(cfg))
 
 
 def _yc(conn, http, now, cfg, source_info: dict) -> list:
@@ -545,7 +566,7 @@ def _run(conn, cfg, profile, args, now, live) -> int:
     source_info: dict = {}
     wanted = [s.strip() for s in args.sources.split(",")]
     fetchers = {n: f for n, f in available.items() if n in wanted and src.get(n, {}).get("enabled", True)}
-    google = google_context(conn, profile) if live else None
+    google = connect_google(conn, cfg, profile) if live else None
     result = run_pipeline(conn, cfg, profile, now=now, fetchers=fetchers, http=http, rescore=args.rescore,
                           live=live, google=google, source_info=source_info)
     if live:
@@ -560,9 +581,7 @@ def _run(conn, cfg, profile, args, now, live) -> int:
         counts = dict(result["counts"], failed_attempts=schedule.failed_attempts_today(conn, now),
                       error_type=(result["errors"][0].split(":")[0] if result["errors"] else None))
         sheet_url = f"https://docs.google.com/spreadsheets/d/{google['sheet_id']}" if google.get("sheet_id") else None
-        ntfy = {"topic": os.environ.get("NTFY_TOPIC"), "server": cfg["notifications"]["ntfy_server"],
-                "enabled": os.environ.get("NTFY_ENABLED", "true").lower() != "false",
-                "timeout": cfg["notifications"]["timeout_seconds"]}
+        ntfy = ntfy_settings(cfg)
         if any("Log in again" in e for e in result["errors"]):   # Claude CLI login expired
             if counts["failed_attempts"] == 1:
                 notify.alert("Claude login expired, so today's jobs weren't scored. Run claude, then /login.", **ntfy)

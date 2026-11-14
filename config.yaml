@@ -264,6 +264,9 @@ notifications:
   ntfy_server: https://ntfy.sh
   timeout_seconds: 10
 
+google:
+  reauth_timeout_seconds: 900   # expired sign-in: a run opens a browser and waits this long for you
+
 schedule:
   max_attempts_per_day: 3
   stale_lock_minutes: 60

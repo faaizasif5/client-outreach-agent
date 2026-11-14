@@ -8,7 +8,7 @@ Each morning it:
 2. Drops stale, onsite, region-locked and otherwise ineligible jobs (plain rules, no AI).
 3. Scores the rest with Claude and picks the right resume.
 4. Prepares Gmail drafts, portal application kits (Google Sheet) and LinkedIn messages.
-5. Emails me a short digest and pings my phone.
+5. Emails me a digest with the full report and pings my phone.
 
 Nothing is ever sent, submitted or applied automatically, and each company is contacted at most once.
 

@@ -25,7 +25,9 @@ class NeedsSetup(Exception):
     """No usable token: run `python main.py setup-google` once (opens a browser)."""
 
 
-def load_credentials(credentials_path: Path, token_path: Path, interactive: bool = False):
+def load_credentials(credentials_path: Path, token_path: Path, interactive: bool = False, timeout: int | None = None):
+    """interactive opens a browser to sign in when the token is missing or revoked; timeout (seconds)
+    bounds the wait for you, so an unattended run fails instead of hanging."""
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
@@ -48,7 +50,12 @@ def load_credentials(credentials_path: Path, token_path: Path, interactive: bool
     elif interactive:
         if not credentials_path.exists():
             raise NeedsSetup(f"{credentials_path} not found (OAuth desktop client from Google Cloud)")
-        creds = InstalledAppFlow.from_client_secrets_file(str(credentials_path), SCOPES).run_local_server(port=0)
+        from google_auth_oauthlib.flow import WSGITimeoutError
+        try:
+            creds = InstalledAppFlow.from_client_secrets_file(str(credentials_path), SCOPES).run_local_server(
+                port=0, timeout_seconds=timeout)
+        except WSGITimeoutError as e:
+            raise NeedsSetup("Google sign-in timed out: run `python main.py setup-google`") from e
     else:
         raise NeedsSetup("Google token missing or revoked: run `python main.py setup-google`")
     token_path.write_text(creds.to_json(), encoding="utf-8")
